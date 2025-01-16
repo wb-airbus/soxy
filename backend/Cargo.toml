@@ -1,0 +1,48 @@
+[package]
+name = "backend"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+common = { path = "../common" }
+crossbeam-channel = "0"
+libloading = "0"
+log = { version = "0", optional = true }
+windows-sys = { version = "0", features = [
+"Win32_Networking_WinSock",
+"Win32_Security",
+"Win32_Storage_FileSystem",
+"Win32_System_Console",
+"Win32_System_IO",
+"Win32_System_LibraryLoader",
+"Win32_System_RemoteDesktop",
+"Win32_System_SystemServices",
+"Win32_System_Threading",
+] }
+
+[build-dependencies]
+bindgen = "0"
+
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+must_use_candidate = "allow"
+enum-glob-use = "allow"
+missing-errors-doc = "allow"
+
+[profile.release]
+opt-level = "z"
+debug = false
+strip = true
+lto = true
+panic = "abort"
+
+[features]
+citrix = []
+log = [ "common/log", "dep:log" ]
+
+[lib]
+crate-type = [ "lib", "cdylib" ]
+name = "soxy"
+
+[[bin]]
+name = "soxy"
