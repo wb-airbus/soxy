@@ -2,27 +2,42 @@
 mod inner {
     #[macro_export]
     macro_rules! trace {
-        ($($arg:tt)+) => {};
+        ($($args:tt)*) => {
+            let _ = format_args!($($args)*);
+        };
+        () => {};
     }
 
     #[macro_export]
     macro_rules! debug {
-        ($($arg:tt)+) => {};
+        ($($args:tt)*) => {
+            let _ = format_args!($($args)*);
+        };
+        () => {};
     }
 
     #[macro_export]
     macro_rules! info {
-        ($($arg:tt)+) => {};
+        ($($args:tt)*) => {
+            let _ = format_args!($($args)*);
+        };
+        () => {};
     }
 
     #[macro_export]
     macro_rules! warn {
-        ($($arg:tt)+) => {};
+        ($($args:tt)*) => {
+            let _ = format_args!($($args)*);
+        };
+        () => {};
     }
 
     #[macro_export]
     macro_rules! error {
-        ($($arg:tt)+) => {};
+        ($($args:tt)*) => {
+            let _ = format_args!($($args)*);
+        };
+        () => {};
     }
 }
 
@@ -30,26 +45,26 @@ mod inner {
 mod inner {
     #[macro_export]
     macro_rules! trace {
-        ($($arg:tt)+) => { log::trace!($($arg)+) }
+        ($($arg:tt)*) => { log::trace!($($arg)*) }
     }
 
     #[macro_export]
     macro_rules! debug {
-        ($($arg:tt)+) => { log::debug!($($arg)+) }
+        ($($arg:tt)*) => { log::debug!($($arg)*) }
     }
 
     #[macro_export]
     macro_rules! info {
-        ($($arg:tt)+) => { log::info!($($arg)+) }
+        ($($arg:tt)*) => { log::info!($($arg)*) }
     }
 
     #[macro_export]
     macro_rules! warn {
-        ($($arg:tt)+) => { log::warn!($($arg)+) }
+        ($($arg:tt)*) => { log::warn!($($arg)*) }
     }
 
     #[macro_export]
     macro_rules! error {
-        ($($arg:tt)+) => { log::error!($($arg)+) }
+        ($($arg:tt)*) => { log::error!($($arg)*) }
     }
 }
