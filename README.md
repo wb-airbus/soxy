@@ -78,7 +78,7 @@ implementation (Windows native RDP, VMware Horizon, Citrix).
 
 #### Pre-compiled Binaries
 
-Pre-compiled binaries can be found in the [Release](releases) section of the
+Pre-compiled binaries can be found in the [Releases](https://github.com/airbus-seclab/soxy/releases) section of the
 project on github. The build step can be skipped, and these binaries
 may be used as described in the next sections.
 
@@ -239,7 +239,7 @@ library, everything will be done automatically at loading time.
 
 
 
-## ▶️ Usage
+## 💻 Usage
 
 After setting up the client and running the backend, you can use the
 following services.
@@ -296,7 +296,7 @@ common/src/ping/
 Refer to `common/src/clipboard/` for examples.
 
 
-## ⚖️ License
+## 🏢 License
 
 This project is licensed under the GPLv3 License. See the [LICENSE](LICENSE) file for details.
 
