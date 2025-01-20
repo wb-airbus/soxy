@@ -30,10 +30,12 @@ jobs:
       - name: Prepare debug artifacts
         run: mkdir debug-artifacts
 
-
       - name: Move debug branch artifacts
         if: ${{ github.ref_type == 'branch' }}
         run: mv debug debug-artifacts/soxy-debug-${{ github.sha }}
+      - name: Move debug tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        run: mv debug debug-artifacts/soxy-debug-${{ github.ref_name }}
 
       - name: Upload debug branch artifacts
         if: ${{ github.ref_type == 'branch' }}
@@ -41,11 +43,6 @@ jobs:
         with:
           name: soxy-debug-${{ github.sha }}
           path: debug-artifacts
-
-      - name: Move debug tag artifacts
-        if: ${{ github.ref_type == 'tag' }}
-        run: mv debug debug-artifacts/soxy-debug-${{ github.ref_name }}
-
       - name: Upload debug tag artifacts
         if: ${{ github.ref_type == 'tag' }}
         uses: actions/upload-artifact@v4
@@ -60,10 +57,12 @@ jobs:
       - name: Prepare release artifacts
         run: mkdir release-artifacts
 
-
       - name: Move release branch artifacts
         if: ${{ github.ref_type == 'branch' }}
         run: mv release release-artifacts/soxy-release-${{ github.sha }}
+      - name: Move release tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        run: mv release release-artifacts/soxy-release-${{ github.ref_name }}
 
       - name: Upload release branch artifacts
         if: ${{ github.ref_type == 'branch' }}
@@ -71,11 +70,6 @@ jobs:
         with:
           name: soxy-release-${{ github.sha }}
           path: release-artifacts
-
-      - name: Move release tag artifacts
-        if: ${{ github.ref_type == 'tag' }}
-        run: mv release release-artifacts/soxy-release-${{ github.ref_name }}
-
       - name: Upload release tag artifacts
         if: ${{ github.ref_type == 'tag' }}
         uses: actions/upload-artifact@v4
