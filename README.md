@@ -1,5 +1,8 @@
 # soxy
 
+[![Clippy](https://github.com/airbus-seclab/soxy/actions/workflows/clippy.yml/badge.svg)](https://github.com/airbus-seclab/soxy/actions/workflows/clippy.yml)
+[![Build](https://github.com/airbus-seclab/soxy/actions/workflows/build.yml/badge.svg)](https://github.com/airbus-seclab/soxy/actions/workflows/build.yml)
+
 soxy is a modular tool to interact with several VDIs that operates over RDP, such as VMware Horizon,
 Citrix (work in progress) and native Windows RDP. It supports useful debug services  (e.g. clipboard sharing, FTP server, SOCKS5 proxy).
 
