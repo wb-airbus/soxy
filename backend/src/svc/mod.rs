@@ -182,7 +182,7 @@ impl<'a> Svc<'a> {
                 let svc = high::Svc::load(&implem.lib, &symbol_names)?;
                 Ok(Self::High { svc })
             }
-            | Instance::Horizon => {
+            Instance::Horizon => {
                 let svc = high::Svc::load(&implem.lib, &symbol_names)?;
                 Ok(Self::High { svc })
             }
