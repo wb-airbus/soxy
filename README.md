@@ -135,15 +135,24 @@ The output hierarchy of the created repositories is the following:
 
 #### On macOS
 
-The macOS client library can only be built on a macOS host. Proceed as follows:
+Only the frontend can be build on macOS. Proceed as follows.
+
+For the debug version:
 
 ```bash
 cd frontend
-cargo build --release --features log
+cargo build --features log
 ```
 
-This produces `target/release/libsoxy.dylib` installable as described in the
-next section.
+For the release version:
+
+```bash
+cd frontend
+cargo build --release
+```
+
+This produces `target/debug/libsoxy.dylib' or `target/release/libsoxy.dylib` installable
+as described in the next section.
 
 ### 🔌 Frontend Installation
 
@@ -151,8 +160,7 @@ next section.
 
 ##### On macOS
 
-Build the `frontend` library on a macOS computer (see section above). Copy it from
-`target/release/libsoxy.dylib` to `/Applications/VMware Horizon Client.app/Contents/Library/pcoip/vchan_plugins/rdpvcbridge/`.
+Copy `libsoxy.dylib` to `/Applications/VMware Horizon Client.app/Contents/Library/pcoip/vchan_plugins/rdpvcbridge/`.
 
 ##### On Linux
 
