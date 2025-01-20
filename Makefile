@@ -82,7 +82,7 @@ distclean: clean
 setup:
 	rustup toolchain add stable nightly
 	rustup target add --toolchain nightly i686-pc-windows-gnu x86_64-pc-windows-gnu
-	rustup target add x86_64-unknown-linux-gnu i686-pc-windows-gnu x86_64-unknown-linux-gnu
+	rustup target add x86_64-unknown-linux-gnu i686-pc-windows-gnu x86_64-pc-windows-gnu
 	rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
 
 #############
