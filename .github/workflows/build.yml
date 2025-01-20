@@ -1,0 +1,84 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencies
+        run: sudo apt install mingw-w64
+
+      - name: Setup
+        run: make setup
+
+
+      - name: Build debug
+        run: make debug
+
+      - name: Prepare debug artifacts
+        run: mkdir debug-artifacts
+
+
+      - name: Move debug branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        run: mv debug debug-artifacts/soxy-debug-${{ github.sha }}
+
+      - name: Upload debug branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soxy-debug-${{ github.sha }}
+          path: debug-artifacts
+
+      - name: Move debug tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        run: mv debug debug-artifacts/soxy-debug-${{ github.ref_name }}
+
+      - name: Upload debug tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soxy-debug-${{ github.ref_name }}
+          path: debug-artifacts
+
+
+      - name: Build release
+        run: make release
+
+      - name: Prepare release artifacts
+        run: mkdir release-artifacts
+
+
+      - name: Move release branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        run: mv release release-artifacts/soxy-release-${{ github.sha }}
+
+      - name: Upload release branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soxy-release-${{ github.sha }}
+          path: release-artifacts
+
+      - name: Move release tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        run: mv release release-artifacts/soxy-release-${{ github.ref_name }}
+
+      - name: Upload release tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soxy-release-${{ github.ref_name }}
+          path: release-artifacts
