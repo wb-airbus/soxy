@@ -1,4 +1,4 @@
-name: Build
+name: Build for Linux, Windows and macOS
 
 on:
   push:
@@ -11,14 +11,17 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    name: Build
+  build-linux-windows:
+    name: Build for Linux and Windows
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Dependencies
         run: sudo apt install mingw-w64
+
+      - name: Rustup update
+        run: rustup update
 
       - name: Setup
         run: make setup
@@ -75,4 +78,150 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: soxy-release-${{ github.ref_name }}
+          path: release-artifacts
+
+
+
+  build-frontend-macos-arm64:
+    name: Build frontend for arm64
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update rustup
+        run: rustup update
+
+
+      - name: Build frontend debug
+        run: cd frontend ; cargo build --features=log
+
+      - name: Prepare debug branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        run: mkdir -p debug-artifacts/soxy-frontend-macos-arm64-debug-${{ github.sha }}/frontend
+      - name: Prepare debug tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        run: mkdir -p debug-artifacts/soxy-frontend-macos-arm64-debug-${{ github.ref_name }}/frontend
+
+      - name: Move debug branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        run: mv frontend/target/debug/libsoxy.dylib debug-artifacts/soxy-frontend-macos-arm64-debug-${{ github.sha }}/frontend
+      - name: Move debug tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        run: mv frontend/target/debug/libsoxy.dylib debug-artifacts/soxy-frontend-macos-arm64-debug-${{ github.ref_name }}/frontend
+
+      - name: Upload debug branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soxy-frontend-macos-arm64-debug-${{ github.sha }}
+          path: debug-artifacts
+      - name: Upload debug tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soxy-frontend-macos-arm64-debug-${{ github.ref_name }}
+          path: debug-artifacts
+
+
+      - name: Build frontend release
+        run: cd frontend ; cargo build --release
+
+      - name: Prepare release branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        run: mkdir -p release-artifacts/soxy-frontend-macos-arm64-release-${{ github.sha }}/frontend
+      - name: Prepare release tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        run: mkdir -p release-artifacts/soxy-frontend-macos-arm64-release-${{ github.ref_name }}/frontend
+
+      - name: Move release branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        run: mv frontend/target/release/libsoxy.dylib release-artifacts/soxy-frontend-macos-arm64-release-${{ github.sha }}/frontend
+      - name: Move release tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        run: mv frontend/target/release/libsoxy.dylib release-artifacts/soxy-frontend-macos-arm64-release-${{ github.ref_name }}/frontend
+
+      - name: Upload release branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soxy-frontend-macos-arm64-release-${{ github.sha }}
+          path: release-artifacts
+      - name: Upload release tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soxy-frontend-macos-arm64-release-${{ github.ref_name }}
+          path: release-artifacts
+
+
+
+  build-frontend-macos-intel:
+    name: Build frontend for x86_64
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update rustup
+        run: rustup update
+
+
+      - name: Build debug frontend
+        run: cd frontend ; cargo build --features=log
+
+      - name: Prepare debug branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        run: mkdir -p debug-artifacts/soxy-frontend-macos-x86_64-debug-${{ github.sha }}/frontend
+      - name: Prepare debug tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        run: mkdir -p debug-artifacts/soxy-frontend-macos-x86_64-debug-${{ github.ref_name }}/frontend
+
+      - name: Move debug branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        run: mv frontend/target/debug/libsoxy.dylib debug-artifacts/soxy-frontend-macos-x86_64-debug-${{ github.sha }}/frontend
+      - name: Move debug tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        run: mv frontend/target/debug/libsoxy.dylib debug-artifacts/soxy-frontend-macos-x86_64-debug-${{ github.ref_name }}/frontend
+
+      - name: Upload debug branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soxy-frontend-macos-x86_64-debug-${{ github.sha }}
+          path: debug-artifacts
+      - name: Upload debug tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soxy-frontend-macos-x86_64-debug-${{ github.ref_name }}
+          path: debug-artifacts
+
+
+      - name: Build release frontend
+        run: cd frontend ; cargo build --release
+
+      - name: Prepare release branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        run: mkdir -p release-artifacts/soxy-frontend-macos-x86_64-release-${{ github.sha }}/frontend
+      - name: Prepare release tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        run: mkdir -p release-artifacts/soxy-frontend-macos-x86_64-release-${{ github.ref_name }}/frontend
+
+      - name: Move release branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        run: mv frontend/target/release/libsoxy.dylib release-artifacts/soxy-frontend-macos-x86_64-release-${{ github.sha }}/frontend
+      - name: Move release tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        run: mv frontend/target/release/libsoxy.dylib release-artifacts/soxy-frontend-macos-x86_64-release-${{ github.ref_name }}/frontend
+
+      - name: Upload release branch artifacts
+        if: ${{ github.ref_type == 'branch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soxy-frontend-macos-x86_64-release-${{ github.sha }}
+          path: release-artifacts
+      - name: Upload release tag artifacts
+        if: ${{ github.ref_type == 'tag' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soxy-frontend-macos-x86_64-release-${{ github.ref_name }}
           path: release-artifacts
