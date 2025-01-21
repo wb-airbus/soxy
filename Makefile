@@ -25,8 +25,6 @@ endif
 RELEASE_DIR:=release
 DEBUG_DIR:=debug
 
-INSTALL_LINUX_DIR:=/usr/lib/vmware/rdpvcbridge/
-
 #BACKEND_WINDOWS32_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo -Ctarget-feature=+crt-static
 BACKEND_WINDOWS64_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo -Ctarget-feature=+crt-static
 #BACKEND_WINDOWS32_BUILD_FLAGS:=-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort
@@ -35,6 +33,13 @@ FRONTEND_WINDOWS32_RUST_FLAGS:=-L $(CITRIX_VCSDK_WINDOWS32_DIR)/bin/Release/Win3
 FRONTEND_WINDOWS64_RUST_FLAGS:=
 FRONTEND_LINUX64_RELEASE_RUST_FLAGS:=-L $(CITRIX_VCSDK_LINUX64_DIR)/binaries/lib/linux64/retail/
 FRONTEND_LINUX64_DEBUG_RUST_FLAGS:=-L $(CITRIX_VCSDK_LINUX64_DIR)/binaries/lib/linux64/debug/
+
+.PHONY: setup
+setup:
+	rustup toolchain add stable nightly
+	rustup target add --toolchain nightly i686-pc-windows-gnu x86_64-pc-windows-gnu
+	rustup target add x86_64-unknown-linux-gnu i686-pc-windows-gnu x86_64-pc-windows-gnu
+	rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
 
 .PHONY: release
 release: build-release
@@ -78,13 +83,6 @@ debug: build-debug
 distclean: clean
 	rm -rf ${RELEASE_DIR} ${DEBUG_DIR}
 
-.PHONY: setup
-setup:
-	rustup toolchain add stable nightly
-	rustup target add --toolchain nightly i686-pc-windows-gnu x86_64-pc-windows-gnu
-	rustup target add x86_64-unknown-linux-gnu i686-pc-windows-gnu x86_64-pc-windows-gnu
-	rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
-
 #############
 
 .PHONY: build-release
@@ -107,27 +105,14 @@ build-debug:
 	cd standalone ; cargo build --features log --target x86_64-pc-windows-gnu
 	cd standalone ; cargo build --features log --target x86_64-unknown-linux-gnu
 
+#############
+
 .PHONY: clippy
 clippy:
 	cd common ; cargo $@ --features log
 	cd frontend ; cargo $@
 	cd backend ; cargo $@ --target x86_64-pc-windows-gnu --features log
 	cd standalone ; cargo $@ --features log
-
-.PHONY: update
-update:
-	cd common ; cargo $@
-	cd frontend ; cargo $@
-	cd backend ; cargo $@
-	cd standalone ; cargo $@
-
-.PHONY: install-linux-frontend-release
-install-linux-frontend-release:
-	cp frontend/target/x86_64-unknown-linux-gnu/release/lib*.so $(INSTALL_LINUX_DIR)
-
-.PHONY: install-linux-frontend-debug
-install-linux-frontend-debug:
-	cp frontend/target/debug/lib*.so $(INSTALL_LINUX_DIR)
 
 .PHONY: cargo-fmt
 cargo-fmt:
