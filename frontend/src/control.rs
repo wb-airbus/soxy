@@ -2,7 +2,7 @@ use crate::svc;
 use common::api;
 use std::{sync, thread};
 
-const SVC_CHANNEL_SIZE: usize = 256;
+const TO_SVC_CHANNEL_SIZE: usize = 256;
 const FRONTEND_CHANNEL_SIZE: usize = 1;
 
 #[derive(Clone)]
@@ -22,8 +22,8 @@ impl Control {
         crossbeam_channel::Sender<svc::Response>,
         crossbeam_channel::Receiver<svc::Command>,
     ) {
-        let (from_svc_sender, from_svc_receiver) = crossbeam_channel::bounded(SVC_CHANNEL_SIZE);
-        let (to_svc_sender, to_svc_receiver) = crossbeam_channel::bounded(SVC_CHANNEL_SIZE);
+        let (from_svc_sender, from_svc_receiver) = crossbeam_channel::unbounded();
+        let (to_svc_sender, to_svc_receiver) = crossbeam_channel::bounded(TO_SVC_CHANNEL_SIZE);
         let (from_frontend_sender, from_frontend_receiver) =
             crossbeam_channel::bounded(FRONTEND_CHANNEL_SIZE);
         let (to_frontend_sender, to_frontend_receiver) =

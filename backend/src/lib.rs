@@ -5,7 +5,7 @@ use windows_sys as ws;
 
 mod svc;
 
-const CHANNEL_SIZE: usize = 256;
+const TO_SVC_CHANNEL_SIZE: usize = 256;
 
 enum Error {
     Svc(svc::Error),
@@ -164,9 +164,8 @@ fn main_res() -> Result<(), Error> {
     let svc = svc::Svc::load(&lib)?;
 
     let (backend_to_frontend_send, backend_to_frontend_receive) =
-        crossbeam_channel::bounded(CHANNEL_SIZE);
-    let (frontend_to_backend_send, frontend_to_backend_receive) =
-        crossbeam_channel::bounded(CHANNEL_SIZE);
+        crossbeam_channel::bounded(TO_SVC_CHANNEL_SIZE);
+    let (frontend_to_backend_send, frontend_to_backend_receive) = crossbeam_channel::unbounded();
 
     let backend_channel = service::Channel::new(backend_to_frontend_send);
 
