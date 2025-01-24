@@ -90,7 +90,7 @@ fn frontend_to_backend<'a>(
 
     loop {
         if connect {
-            common::debug!("open static channel {}", common::VIRTUAL_CHANNEL_NAME);
+            common::debug!("open static channel {:?}", common::VIRTUAL_CHANNEL_NAME);
             match svc.open(common::VIRTUAL_CHANNEL_NAME) {
                 Err(e) => {
                     common::error!("failed to open channel handle: {e}");
@@ -98,7 +98,7 @@ fn frontend_to_backend<'a>(
                     continue;
                 }
                 Ok(svc_handle) => {
-                    common::info!("static channel {} opened", common::VIRTUAL_CHANNEL_NAME);
+                    common::info!("static channel {:?} opened", common::VIRTUAL_CHANNEL_NAME);
                     channel.write().unwrap().replace(svc_handle);
                     connect = false;
                 }

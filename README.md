@@ -3,15 +3,21 @@
 [![Clippy](https://github.com/airbus-seclab/soxy/actions/workflows/clippy.yml/badge.svg)](https://github.com/airbus-seclab/soxy/actions/workflows/clippy.yml)
 [![Build](https://github.com/airbus-seclab/soxy/actions/workflows/build.yml/badge.svg)](https://github.com/airbus-seclab/soxy/actions/workflows/build.yml)
 
-soxy is a modular tool to interact with several VDIs that operates over RDP, such as VMware Horizon,
-Citrix (work in progress) and native Windows RDP. It supports useful debug services  (e.g. clipboard sharing, FTP server, SOCKS5 proxy).
+soxy is a modular tool to interact with several VDIs that operates
+over RDP, such as VMware Horizon, Citrix and native
+Windows RDP. It supports useful debug services (e.g. clipboard, console/shell,
+sharing, FTP server, SOCKS5 proxy).
 
 ## 🎯 Features
 
-soxy has a frontend and a backend component, the latter executes inside a Windows instance managed by one of the supported VDIs, the frontend bridges access to backend functions by exposing VDI-side resources locally using a common protocol. At the time of writing, soxy provides:
+soxy has a frontend and a backend component, the latter executes
+inside a Windows instance managed by one of the supported VDIs, the
+frontend bridges access to backend functions by exposing VDI-side
+resources locally using a common protocol. At the time of writing,
+soxy provides:
 
 - a (basic) FTP server to access the virtual machine's filesystem;
-- a telnet-like interface to spawn and interact console/shell executed on the
+- a telnet-like interface to spawn and interact with a console/shell executed on the
   virtual machine;
 - a telnet-like interface to read/write the Windows clipboard of the
   virtual machine;
@@ -23,13 +29,13 @@ tools such as [SocksOverRDP](https://github.com/nccgroup/SocksOverRDP)
 or [ica2TCP](https://github.com/synacktiv/ica2tcp) or [rdp2tcp](https://rdp2tcp.sourceforge.net).
 
 soxy supports native Windows RDP (real or virtual host) as well as
-VMware Horizon and Citrix (work in progress) virtual machines.
+VMware Horizon and Citrix virtual machines.
 
 On the client side, soxy works as a plugin on:
 
 - VMware Horizon client on Linux, macOS and Windows;
 - FreeRDP and Remmina on Linux;
-- Citrix client (work in progress) on Linux, macOS and Windows.
+- Citrix client on Linux, macOS and Windows.
 
 On the remote host, soxy runs as a traditional Windows executable but
 it can also be embedded in other applications as a DLL. In release
@@ -56,7 +62,11 @@ from the binary) and without symbols.
 
 The soxy source code is split into four parts:
 
-- **frontend**: contains the code of the dynamic library to be installed on the client's machine and loaded by FreeRDP (or Remmina), VMware Horizon viewer, or Citrix (work in progress). This part of soxy accepts TCP connections on the client's side (or local network, depending on the configuration) for each service;
+- **frontend**: contains the code of the dynamic library to be
+  installed on the client's machine and loaded by FreeRDP (or
+  Remmina), VMware Horizon viewer, or Citrix. This part of soxy
+  accepts TCP connections on the client's side (or local network,
+  depending on the configuration) for each service;
 - **backend**: contains the code of the Windows executable
   (or DLL) to be launched (or loaded) on the remote Windows machine;
 - **standalone**: contains the code to produce an exectuable
@@ -180,13 +190,13 @@ sudo cp frontend/linux64/libsoxy.so /usr/lib/vmware/rdpvcbridge/
 Register the `frontend` library for automatic loading by VMware Horizon client:
 
 ```bash
-regsvr32.exe /s soxy.dll
+regsvr32.exe soxy.dll
 ```
 
 To uninstall:
 
 ```bash
-regsvr32.exe /s /u soxy.dll
+regsvr32.exe /u soxy.dll
 ```
 
 #### For FreeRDP and Remmina (Linux)
@@ -210,10 +220,37 @@ sdl-freerdp3 /dynamic-resolution /log-level:INFO /u:User /v:192.168.42.42 /vc:so
 For Remmina, edit your RDP connection, got to the "Advanced" tab and
 set the "Static virtual channel" parameter to `soxy`.
 
-#### For Citrix Client
+#### For Citrix Workspace App
 
-_Work in progress_
+##### On macOS
 
+_TODO_
+
+##### On Linux
+
+First copy `libsoxy.so` to `/opt/Citrix/ICAClient/`, then modify
+`/opt/Citrix/ICAClient/config/module.ini`:
+
+- add `soxy` in the `VirtualDriver` list in the `[ICA 3.0]` section
+- in the same section, add the line `soxy=On`
+- add a `[soxy]` section containing the following line:
+  - `DriverName = libsoxy.so`
+
+##### On Windows
+
+First copy the **win32** version of `soxy.dll` to `C:\Program Files
+(x86)\Citrix\ICA Client`, then register it for automatic loading by
+Citrix Workspace App; you need to run the command with administrator privileges:
+
+```bash
+regsvr32.exe soxy.dll
+```
+
+To uninstall:
+
+```bash
+regsvr32.exe /u soxy.dll
+```
 
 ### 🔌 Backend Installation
 
@@ -254,7 +291,7 @@ running, you can start using soxy services from your client machine
 #### Remote Clipboard
 
 Connect to `localhost:3032` on your client machine with a telnet-like
-command such as nc, and use the available commands:
+command such as `nc`, and use the available commands:
 
 - `write xxxx` or `put xxxx`: sets the remote clipboard to the value `xxxx`;
 - `read` or `get`: retrieves the content of the remote clipboard;
@@ -263,7 +300,7 @@ command such as nc, and use the available commands:
 #### Remote Console/Shell
 
 Connect to `localhost:3031` on your client machine with a telnet-like
-command such as nc, and use the available commands.
+command such as `nc`, and use the available commands.
 
 #### Remote Filesystem
 

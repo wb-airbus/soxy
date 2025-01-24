@@ -1,6 +1,6 @@
 use std::{borrow, fmt, io, sync};
 
-const CHUNK_LENGTH: usize = 1600; // this is the max value
+pub const CHUNK_LENGTH: usize = 1600; // this is the max value
 
 const SERVICE_CLIPBOARD: &str = "clipboard";
 const SERVICE_COMMAND: &str = "command";

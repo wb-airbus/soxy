@@ -1,3 +1,5 @@
+use std::ffi;
+
 pub mod api;
 pub mod log;
 pub mod service;
@@ -7,7 +9,7 @@ pub mod command;
 pub mod ftp;
 pub mod socks5;
 
-pub const VIRTUAL_CHANNEL_NAME: &str = "SOXY";
+pub const VIRTUAL_CHANNEL_NAME: &ffi::CStr = c"SOXY";
 
 #[cfg(not(feature = "log"))]
 pub const fn init_logs() -> Result<(), String> {

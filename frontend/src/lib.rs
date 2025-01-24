@@ -169,9 +169,9 @@ pub fn init(
                 if let Err(e) =
                     frontend_channel.start(api::ServiceKind::Frontend, &backend_to_frontend)
                 {
-                    common::error!("error: {e}");
+                    common::error!("frontend error: {e}");
                 } else {
-                    common::debug!("terminated");
+                    common::debug!("frontend terminated");
                 }
             });
         })
@@ -201,18 +201,16 @@ pub(crate) fn start() {
         .name("svc_commander".into())
         .spawn(move || {
             if let Err(e) = svc_commander(&control_to_svc_receive) {
-                common::error!("error: {e}");
+                common::error!("svc_commander error: {e}");
             }
-            common::debug!("terminated");
+            common::debug!("svc_commander terminated");
         })
         .unwrap();
 
     let services = service::Channel::new(frontend_to_svc_send);
 
     if let Err(e) = init(services, svc_to_frontend_receive) {
-        common::error!("error: {e}");
-    } else {
-        common::debug!("terminated");
+        common::error!("init error: {e}");
     }
 
     thread::Builder::new()

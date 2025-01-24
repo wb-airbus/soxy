@@ -1,8 +1,9 @@
-use std::{io, os};
+use std::{io, os, ptr};
 use windows_sys as ws;
 
 pub(crate) struct Svc<'a> {
     open: libloading::Symbol<'a, super::VirtualChannelOpen>,
+    query: libloading::Symbol<'a, super::VirtualChannelQuery>,
     read: libloading::Symbol<'a, super::VirtualChannelRead>,
     write: libloading::Symbol<'a, super::VirtualChannelWrite>,
 }
@@ -15,6 +16,7 @@ impl<'a> Svc<'a> {
         unsafe {
             Ok(Self {
                 open: lib.get(symbols.open.as_bytes())?,
+                query: lib.get(symbols.query.as_bytes())?,
                 read: lib.get(symbols.read.as_bytes())?,
                 write: lib.get(symbols.write.as_bytes())?,
             })
@@ -33,6 +35,23 @@ impl<'a> Svc<'a> {
         if wtshandle.is_null() {
             let err = unsafe { ws::Win32::Foundation::GetLastError() };
             return Err(super::Error::VirtualChannelOpenStaticChannelFailed(err));
+        }
+
+        let mut client_dataptr = ptr::null_mut();
+        let mut len = 0;
+
+        let ret = unsafe {
+            (self.query)(
+                wtshandle,
+                ws::Win32::System::RemoteDesktop::WTSVirtualClientData,
+                ptr::from_mut(&mut client_dataptr),
+                &mut len,
+            )
+        };
+
+        if ret == ws::Win32::Foundation::FALSE {
+            let err = unsafe { ws::Win32::Foundation::GetLastError() };
+            common::warn!("virtual channel query failed (len = {len}, last error = {err})");
         }
 
         Ok(Handle {

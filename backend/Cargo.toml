@@ -37,7 +37,6 @@ lto = true
 panic = "abort"
 
 [features]
-citrix = []
 log = [ "common/log", "dep:log" ]
 
 [lib]

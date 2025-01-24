@@ -11,6 +11,7 @@ log = { version = "0", optional = true }
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0", features = [
 "Win32_Networking_WinSock",
+"Win32_System_Console",
 "Win32_System_Ole",
 ] }
 winreg = "0"
@@ -36,4 +37,3 @@ lto = true
 
 [features]
 log = [ "common/log", "dep:log" ]
-citrix = []

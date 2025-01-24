@@ -15,6 +15,7 @@ pub(crate) enum Error {
     VirtualChannelQueryFailed(u32),
     DuplicateHandleFailed(u32),
     CreateEventFailed(u32),
+    InvalidChannelName,
 }
 
 impl fmt::Display for Error {
@@ -42,6 +43,9 @@ impl fmt::Display for Error {
             Self::CreateEventFailed(err) => {
                 write!(f, "create event failed (last error = {err})")
             }
+            Self::InvalidChannelName => {
+                write!(f, "invalid channel name")
+            }
         }
     }
 }
@@ -60,7 +64,6 @@ impl From<io::Error> for Error {
 
 #[derive(Clone, Copy, Debug)]
 enum Instance {
-    #[cfg(feature = "citrix")]
     Citrix,
     Horizon,
     Windows,
@@ -76,7 +79,6 @@ pub(crate) struct SymbolNames {
 impl From<Instance> for SymbolNames {
     fn from(instance: Instance) -> Self {
         match instance {
-            #[cfg(feature = "citrix")]
             Instance::Citrix => Self {
                 open: "WFVirtualChannelOpen",
                 read: "WFVirtualChannelRead",
@@ -107,16 +109,13 @@ pub(crate) struct Implementation {
 impl Implementation {
     pub(crate) fn load() -> Result<Self, Error> {
         unsafe {
-            #[cfg(feature = "citrix")]
-            {
-                common::debug!("trying to load Citrix library");
-                if let Ok(lib) = libloading::Library::new("wfapi64.dll") {
-                    common::info!("Citrix library loaded");
-                    return Ok(Self {
-                        instance: Instance::Citrix,
-                        lib,
-                    });
-                }
+            common::debug!("trying to load Citrix library");
+            if let Ok(lib) = libloading::Library::new("wfapi64.dll") {
+                common::info!("Citrix library loaded");
+                return Ok(Self {
+                    instance: Instance::Citrix,
+                    lib,
+                });
             }
 
             common::debug!("trying to load Horizon library");
@@ -179,7 +178,6 @@ impl<'a> Svc<'a> {
     pub(crate) fn load(implem: &'a Implementation) -> Result<Self, Error> {
         let symbol_names = SymbolNames::from(implem.instance);
         match implem.instance {
-            #[cfg(feature = "citrix")]
             Instance::Citrix => {
                 let svc = high::Svc::load(&implem.lib, &symbol_names)?;
                 Ok(Self::High { svc })
@@ -195,22 +193,15 @@ impl<'a> Svc<'a> {
         }
     }
 
-    pub(crate) fn open(&'a self, name: &str) -> Result<Handle<'a>, Error> {
-        let cname = ffi::CString::new(name)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        let cname_ptr = cname.as_ptr();
-        let mut name: [ffi::c_char; 8] = [0; 8];
-        for (i, name_i) in name
-            .iter_mut()
-            .enumerate()
-            .take(usize::min(cname.count_bytes(), 7))
-        {
-            *name_i = unsafe { *cname_ptr.wrapping_add(i) };
+    pub(crate) fn open(&'a self, name: &ffi::CStr) -> Result<Handle<'a>, Error> {
+        let mut cname: [ffi::c_char; 8] = [0; 8];
+        for (i, b) in name.to_bytes_with_nul().iter().enumerate() {
+            cname[i] = i8::try_from(*b).map_err(|_| Error::InvalidChannelName)?;
         }
 
         match self {
-            Self::High { svc } => Ok(Handle::from(svc.open(name)?)),
-            Self::Low { svc } => Ok(Handle::from(svc.open(name)?)),
+            Self::High { svc } => Ok(Handle::from(svc.open(cname)?)),
+            Self::Low { svc } => Ok(Handle::from(svc.open(cname)?)),
         }
     }
 }
