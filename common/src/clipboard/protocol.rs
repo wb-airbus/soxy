@@ -83,8 +83,8 @@ impl Response {
                 let mut buf = [0u8; 1];
                 buf[0] = ID_CLIPBOARD;
                 stream.write_all(&buf)?;
-                let len = u32::try_from(s.len())
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+
+                let len = s.len();
                 stream.write_all(&len.to_le_bytes())?;
                 stream.write_all(s.as_bytes())?;
             }
@@ -111,11 +111,13 @@ impl Response {
 
         match buf[0] {
             ID_CLIPBOARD => {
-                let mut buf = [0u8; 4];
+                let mut buf = [0u8; 8];
                 stream.read_exact(&mut buf)?;
-                let len = u32::from_le_bytes(buf);
+                let len = u64::from_le_bytes(buf);
+                let len = usize::try_from(len)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
-                let mut buf = vec![0u8; len as usize];
+                let mut buf = vec![0u8; len];
                 stream.read_exact(&mut buf)?;
 
                 let value = String::from_utf8_lossy(&buf).to_string();
