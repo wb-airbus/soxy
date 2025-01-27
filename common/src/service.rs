@@ -2,7 +2,8 @@ use crate::{api, clipboard, ftp, socks5};
 use std::{
     collections::{self, hash_map},
     io::{self, Write},
-    net, sync, thread,
+    net::{self, TcpStream},
+    sync, thread,
 };
 
 const CLIENT_CHUNK_BUFFER_SIZE: usize = 16;
@@ -572,6 +573,58 @@ where
         to.flush()?;
         thread::yield_now();
     }
+}
+
+pub(crate) fn dual_stream_copy(
+    service_kind: api::ServiceKind,
+    service: api::Service,
+    rdp_stream: RdpStream<'_>,
+    tcp_stream: TcpStream,
+) -> Result<(), io::Error> {
+    let client_id = rdp_stream.client_id();
+
+    let (rdp_stream_read, rdp_stream_write) = rdp_stream.split();
+
+    let tcp_stream2 = tcp_stream.try_clone()?;
+
+    thread::scope(|scope| {
+        thread::Builder::new()
+            .name(format!(
+                "{service_kind} {service} {client_id:x} stream copy"
+            ))
+            .spawn_scoped(scope, move || {
+                let mut rdp_stream_read = io::BufReader::new(rdp_stream_read);
+                let mut tcp_stream2 = io::BufWriter::new(tcp_stream2);
+                if let Err(e) = stream_copy(&mut rdp_stream_read, &mut tcp_stream2) {
+                    crate::debug!("error: {e}");
+                } else {
+                    crate::debug!("stopped");
+                }
+                let _ = tcp_stream2.flush();
+                if let Ok(tcp_stream2) = tcp_stream2.into_inner() {
+                    let _ = tcp_stream2.shutdown(net::Shutdown::Both);
+                }
+                let rdp_stream_read = rdp_stream_read.into_inner();
+                rdp_stream_read.disconnect();
+            })
+            .unwrap();
+
+        let mut tcp_stream = io::BufReader::new(tcp_stream);
+        let mut rdp_stream_write = io::BufWriter::new(rdp_stream_write);
+        if let Err(e) = stream_copy(&mut tcp_stream, &mut rdp_stream_write) {
+            crate::debug!("error: {e}");
+        } else {
+            crate::debug!("stopped");
+        }
+        let _ = rdp_stream_write.flush();
+        if let Ok(mut rdp_stream_write) = rdp_stream_write.into_inner() {
+            let _ = rdp_stream_write.disconnect();
+        }
+        let tcp_stream = tcp_stream.into_inner();
+        let _ = tcp_stream.shutdown(net::Shutdown::Both);
+
+        Ok(())
+    })
 }
 
 pub trait Frontend: Sized {

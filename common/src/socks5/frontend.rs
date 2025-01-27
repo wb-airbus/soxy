@@ -129,8 +129,6 @@ impl Client {
     }
 
     fn command_connect(mut self, mut client_rdp: service::RdpStream<'_>) -> Result<(), io::Error> {
-        let client_id = client_rdp.client_id();
-
         let resp = protocol::Response::receive(&mut client_rdp)?;
         resp.answer_to_client(&mut self.stream)?;
 
@@ -139,53 +137,10 @@ impl Client {
             return Ok(());
         }
 
-        let (client_rdp_read, client_rdp_write) = client_rdp.split();
-
-        let stream2 = self.stream.try_clone()?;
-
-        thread::scope(|scope| {
-            thread::Builder::new()
-                .name(format!(
-                    "{SERVICE_KIND} {SERVICE} {client_id:x} rdp to server"
-                ))
-                .spawn_scoped(scope, move || {
-                    let mut client_rdp_read = io::BufReader::new(client_rdp_read);
-                    let mut stream2 = io::BufWriter::new(stream2);
-                    if let Err(e) = service::stream_copy(&mut client_rdp_read, &mut stream2) {
-                        crate::debug!("error: {e}");
-                    } else {
-                        crate::debug!("stopped");
-                    }
-                    let _ = stream2.flush();
-                    if let Ok(stream2) = stream2.into_inner() {
-                        let _ = stream2.shutdown(net::Shutdown::Both);
-                    }
-                    let client_rdp_read = client_rdp_read.into_inner();
-                    client_rdp_read.disconnect();
-                })
-                .unwrap();
-
-            let mut client_rdp_write = io::BufWriter::new(client_rdp_write);
-            let mut stream = io::BufReader::new(self.stream);
-            if let Err(e) = service::stream_copy(&mut stream, &mut client_rdp_write) {
-                crate::debug!("error: {e}");
-            } else {
-                crate::debug!("stopped");
-            }
-            let _ = client_rdp_write.flush();
-            if let Ok(mut client_rdp_write) = client_rdp_write.into_inner() {
-                let _ = client_rdp_write.disconnect();
-            }
-            let stream = stream.into_inner();
-            let _ = stream.shutdown(net::Shutdown::Both);
-
-            Ok(())
-        })
+        service::dual_stream_copy(SERVICE_KIND, SERVICE, client_rdp, self.stream)
     }
 
     fn command_bind(mut self, mut client_rdp: service::RdpStream<'_>) -> Result<(), io::Error> {
-        let client_id = client_rdp.client_id();
-
         // for the bind operation on the backend
         let resp = protocol::Response::receive(&mut client_rdp)?;
         resp.answer_to_client(&mut self.stream)?;
@@ -204,48 +159,7 @@ impl Client {
             return Ok(());
         }
 
-        let (client_rdp_read, client_rdp_write) = client_rdp.split();
-
-        let stream2 = self.stream.try_clone()?;
-
-        thread::scope(|scope| {
-            thread::Builder::new()
-                .name(format!(
-                    "{SERVICE_KIND} {SERVICE} {client_id:x} rdp to server"
-                ))
-                .spawn_scoped(scope, move || {
-                    let mut client_rdp_read = io::BufReader::new(client_rdp_read);
-                    let mut stream2 = io::BufWriter::new(stream2);
-                    if let Err(e) = service::stream_copy(&mut client_rdp_read, &mut stream2) {
-                        crate::debug!("error: {e}");
-                    } else {
-                        crate::debug!("stopped");
-                    }
-                    let _ = stream2.flush();
-                    if let Ok(stream2) = stream2.into_inner() {
-                        let _ = stream2.shutdown(net::Shutdown::Both);
-                    }
-                    let client_rdp_read = client_rdp_read.into_inner();
-                    client_rdp_read.disconnect();
-                })
-                .unwrap();
-
-            let mut stream = io::BufReader::new(self.stream);
-            let mut client_rdp_write = io::BufWriter::new(client_rdp_write);
-            if let Err(e) = service::stream_copy(&mut stream, &mut client_rdp_write) {
-                crate::debug!("error: {e}");
-            } else {
-                crate::debug!("stopped");
-            }
-            let _ = client_rdp_write.flush();
-            if let Ok(mut client_rdp_write) = client_rdp_write.into_inner() {
-                let _ = client_rdp_write.disconnect();
-            }
-            let stream = stream.into_inner();
-            let _ = stream.shutdown(net::Shutdown::Both);
-
-            Ok(())
-        })
+        service::dual_stream_copy(SERVICE_KIND, SERVICE, client_rdp, self.stream)
     }
 
     fn start(mut self, channel: &service::Channel) -> Result<(), io::Error> {
