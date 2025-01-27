@@ -1,5 +1,5 @@
 use common::{
-    api, clipboard, ftp,
+    api, clipboard, command, ftp,
     service::{self, Frontend},
     socks5,
 };
@@ -69,6 +69,11 @@ pub(crate) fn init() -> Result<(), Error> {
     //let timeout_clipboard = None;
     let mut server_clipboard = clipboard::frontend::Server::bind(from_tcp_clipboard)?;
 
+    let from_tcp_command =
+        net::SocketAddr::new(net::IpAddr::V4(net::Ipv4Addr::new(127, 0, 0, 1)), 3031);
+    //let timeout_command = None;
+    let mut server_command = command::frontend::Server::bind(from_tcp_command)?;
+
     let from_tcp_ftp =
         net::SocketAddr::new(net::IpAddr::V4(net::Ipv4Addr::new(127, 0, 0, 1)), 2021);
     //let timeout_ftp = None;
@@ -112,6 +117,17 @@ pub(crate) fn init() -> Result<(), Error> {
                             common::error!("{} error: {e}", api::Service::Clipboard);
                         } else {
                             common::debug!("{} terminated", api::Service::Clipboard);
+                        }
+                    })
+                    .unwrap();
+
+                thread::Builder::new()
+                    .name(format!("{}", api::Service::Command))
+                    .spawn_scoped(scope, || {
+                        if let Err(e) = server_command.start(&services) {
+                            common::error!("{} error: {e}", api::Service::Command);
+                        } else {
+                            common::debug!("{} terminated", api::Service::Command);
                         }
                     })
                     .unwrap();

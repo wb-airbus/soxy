@@ -3,12 +3,14 @@ use std::{borrow, fmt, io, sync};
 const CHUNK_LENGTH: usize = 1600; // this is the max value
 
 const SERVICE_CLIPBOARD: &str = "clipboard";
+const SERVICE_COMMAND: &str = "command";
 const SERVICE_FTP: &str = "ftp";
 const SERVICE_SOCKS5: &str = "socks5";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Service {
     Clipboard,
+    Command,
     Ftp,
     Socks5,
 }
@@ -17,6 +19,7 @@ impl Service {
     const fn value(self) -> &'static str {
         match self {
             Self::Clipboard => SERVICE_CLIPBOARD,
+            Self::Command => SERVICE_COMMAND,
             Self::Ftp => SERVICE_FTP,
             Self::Socks5 => SERVICE_SOCKS5,
         }
@@ -34,6 +37,7 @@ impl<'a> TryFrom<&'a [u8]> for Service {
         let s = String::from_utf8_lossy(value);
         match s.as_ref() {
             SERVICE_CLIPBOARD => Ok(Self::Clipboard),
+            SERVICE_COMMAND => Ok(Self::Command),
             SERVICE_FTP => Ok(Self::Ftp),
             SERVICE_SOCKS5 => Ok(Self::Socks5),
             _ => Err(s),

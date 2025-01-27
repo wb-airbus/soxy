@@ -3,6 +3,7 @@ pub mod log;
 pub mod service;
 
 pub mod clipboard;
+pub mod command;
 pub mod ftp;
 pub mod socks5;
 

@@ -137,7 +137,7 @@ impl Client {
             return Ok(());
         }
 
-        service::dual_stream_copy(SERVICE_KIND, SERVICE, client_rdp, self.stream)
+        service::double_stream_copy(SERVICE_KIND, SERVICE, client_rdp, self.stream)
     }
 
     fn command_bind(mut self, mut client_rdp: service::RdpStream<'_>) -> Result<(), io::Error> {
@@ -159,7 +159,7 @@ impl Client {
             return Ok(());
         }
 
-        service::dual_stream_copy(SERVICE_KIND, SERVICE, client_rdp, self.stream)
+        service::double_stream_copy(SERVICE_KIND, SERVICE, client_rdp, self.stream)
     }
 
     fn start(mut self, channel: &service::Channel) -> Result<(), io::Error> {

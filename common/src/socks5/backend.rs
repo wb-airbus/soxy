@@ -35,7 +35,7 @@ impl Server {
 
                 crate::debug!("starting stream copy");
 
-                service::dual_stream_copy(SERVICE_KIND, SERVICE, stream, server)
+                service::double_stream_copy(SERVICE_KIND, SERVICE, stream, server)
             }
         }
     }
@@ -66,7 +66,7 @@ impl Server {
 
                         crate::debug!("starting stream copy");
 
-                        service::dual_stream_copy(SERVICE_KIND, SERVICE, stream, client)
+                        service::double_stream_copy(SERVICE_KIND, SERVICE, stream, client)
                     }
                 }
             }

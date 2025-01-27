@@ -1,5 +1,5 @@
 use common::{
-    api, clipboard, ftp,
+    api, clipboard, command, ftp,
     service::{self, Frontend},
     socks5,
 };
@@ -7,11 +7,14 @@ use std::{net, thread};
 
 const CHANNEL_SIZE: usize = 256;
 
+#[allow(clippy::too_many_lines)]
 fn main() {
     common::init_logs().expect("failed to initialize log");
 
     let from_tcp_clipboard =
         net::SocketAddr::new(net::IpAddr::V4(net::Ipv4Addr::new(127, 0, 0, 1)), 3032);
+    let from_tcp_command =
+        net::SocketAddr::new(net::IpAddr::V4(net::Ipv4Addr::new(127, 0, 0, 1)), 3031);
     let from_tcp_ftp =
         net::SocketAddr::new(net::IpAddr::V4(net::Ipv4Addr::new(127, 0, 0, 1)), 2021);
     let from_tcp_socks5 =
@@ -21,6 +24,14 @@ fn main() {
     {
         Err(e) => {
             common::error!("failed to bind to {from_tcp_clipboard}: {e}");
+            return;
+        }
+        Ok(frontend_server) => frontend_server,
+    };
+
+    let mut frontend_server_command = match command::frontend::Server::bind(from_tcp_command) {
+        Err(e) => {
+            common::error!("failed to bind to {from_tcp_command}: {e}");
             return;
         }
         Ok(frontend_server) => frontend_server,
@@ -81,6 +92,17 @@ fn main() {
             .name(format!("frontend {}", api::Service::Clipboard))
             .spawn_scoped(scope, || {
                 if let Err(e) = frontend_server_clipboard.start(&frontend_channel) {
+                    common::error!("error: {e}");
+                } else {
+                    common::debug!("stopped");
+                }
+            })
+            .unwrap();
+
+        thread::Builder::new()
+            .name(format!("frontend {}", api::Service::Command))
+            .spawn_scoped(scope, || {
+                if let Err(e) = frontend_server_command.start(&frontend_channel) {
                     common::error!("error: {e}");
                 } else {
                     common::debug!("stopped");

@@ -11,6 +11,8 @@ Citrix (work in progress) and native Windows RDP. It supports useful debug servi
 soxy has a frontend and a backend component, the latter executes inside a Windows instance managed by one of the supported VDIs, the frontend bridges access to backend functions by exposing VDI-side resources locally using a common protocol. At the time of writing, soxy provides:
 
 - a (basic) FTP server to access the virtual machine's filesystem;
+- a telnet-like interface to spawn and interact console/shell executed on the
+  virtual machine;
 - a telnet-like interface to read/write the Windows clipboard of the
   virtual machine;
 - a SOCKS5 proxy which permits to open connections on client's side as
@@ -257,6 +259,11 @@ command such as nc, and use the available commands:
 - `write xxxx` or `put xxxx`: sets the remote clipboard to the value `xxxx`;
 - `read` or `get`: retrieves the content of the remote clipboard;
 - `exit` or `quit`: closes the connection.
+
+#### Remote Console/Shell
+
+Connect to `localhost:3031` on your client machine with a telnet-like
+command such as nc, and use the available commands.
 
 #### Remote Filesystem
 

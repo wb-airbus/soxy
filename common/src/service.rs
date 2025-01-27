@@ -1,4 +1,4 @@
-use crate::{api, clipboard, ftp, socks5};
+use crate::{api, clipboard, command, ftp, socks5};
 use std::{
     collections::{self, hash_map},
     io::{self, Write},
@@ -101,6 +101,11 @@ impl Channel {
                         .spawn_scoped(scope, move || match service {
                             api::Service::Clipboard => {
                                 if let Err(e) = clipboard::backend::Server::accept(stream) {
+                                    crate::debug!("error: {e}");
+                                }
+                            }
+                            api::Service::Command => {
+                                if let Err(e) = command::backend::Server::accept(stream) {
                                     crate::debug!("error: {e}");
                                 }
                             }
@@ -479,6 +484,7 @@ impl io::Read for RdpReader<'_> {
     }
 }
 
+#[derive(Clone)]
 pub struct RdpWriter<'a> {
     control: RdpStreamControl<'a>,
     buffer: [u8; api::Chunk::max_payload_length()],
@@ -575,7 +581,7 @@ where
     }
 }
 
-pub(crate) fn dual_stream_copy(
+pub(crate) fn double_stream_copy(
     service_kind: api::ServiceKind,
     service: api::Service,
     rdp_stream: RdpStream<'_>,
