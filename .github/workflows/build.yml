@@ -64,12 +64,22 @@ jobs:
       - name: Build frontend release
         run: cd frontend ; cargo build --release
 
+      - name: Build standalone debug
+        run: cd standalone ; cargo build --features=log
+
+      - name: Build standalone release
+        run: cd standalone ; cargo build --release --features=log
+
       - name: Gather artifacts
         run: |
           mkdir -p artifacts/debug/frontend/macos-arm64
           mv frontend/target/debug/libsoxy.dylib artifacts/debug/frontend/macos-arm64/
           mkdir -p artifacts/release/frontend/macos-arm64
           mv frontend/target/release/libsoxy.dylib artifacts/release/frontend/macos-arm64/
+          mkdir -p artifacts/debug/standalone/macos-arm64
+          mv standalone/target/debug/soxy_standalone artifacts/debug/standalone/macos-arm64/
+          mkdir -p artifacts/release/standalone/macos-arm64
+          mv standalone/target/release/soxy_standalone artifacts/release/standalone/macos-arm64/
 
       - name: Upload debug artifacts
         uses: actions/upload-artifact@v4
@@ -94,12 +104,22 @@ jobs:
       - name: Build frontend release
         run: cd frontend ; cargo build --release
 
+      - name: Build standalone debug
+        run: cd standalone ; cargo build --features=log
+
+      - name: Build standalone release
+        run: cd standalone ; cargo build --release --features=log
+
       - name: Gather  artifacts
         run: |
           mkdir -p artifacts/debug/frontend/macos-x86_64
           mv frontend/target/debug/libsoxy.dylib artifacts/debug/frontend/macos-x86_64/
           mkdir -p artifacts/release/frontend/macos-x86_64
           mv frontend/target/release/libsoxy.dylib artifacts/release/frontend/macos-x86_64/
+          mkdir -p artifacts/debug/standalone/macos-x86_64
+          mv standalone/target/debug/soxy_standalone artifacts/debug/standalone/macos-x86_64/
+          mkdir -p artifacts/release/standalone/macos-x86_64
+          mv standalone/target/release/soxy_standalone artifacts/release/standalone/macos-x86_64/
 
       - name: Upload debug artifacts
         uses: actions/upload-artifact@v4
