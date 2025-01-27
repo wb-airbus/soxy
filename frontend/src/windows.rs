@@ -53,12 +53,13 @@ fn unregister() -> Result<(), io::Error> {
 unsafe extern "system" fn DllUnregisterServer() -> ws::core::HRESULT {
     match unregister() {
         Ok(()) => ws::Win32::Foundation::S_OK,
-        Err(e) => match e.kind() {
-            io::ErrorKind::NotFound => ws::Win32::Foundation::S_OK,
-            _ => {
+        Err(e) => {
+            if e.kind() == io::ErrorKind::NotFound {
+                ws::Win32::Foundation::S_OK
+            } else {
                 common::error!("{e}");
                 ws::Win32::System::Ole::SELFREG_E_CLASS
             }
-        },
+        }
     }
 }

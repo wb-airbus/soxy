@@ -154,9 +154,15 @@ impl LowSvc {
                         let write = write.as_ref().ok_or(Error::NotReady)?;
 
                         #[cfg(not(target_os = "windows"))]
-                        let len = data.len() as u64;
+                        let len = u64::try_from(data.len()).map_err(|e| {
+                            common::error!("write error: data too large ({e})");
+                            Error::VirtualChannel(0)
+                        })?;
                         #[cfg(target_os = "windows")]
-                        let len = data.len() as u32;
+                        let len = u32::try_from(data.len()).map_err(|e| {
+                            common::error!("write error: data too large ({e})");
+                            Error::VirtualChannel(0)
+                        })?;
 
                         write_ack.can_send.acquire();
 
@@ -171,9 +177,15 @@ impl LowSvc {
                         let write = write.as_ref().ok_or(Error::NotReady)?;
 
                         #[cfg(not(target_os = "windows"))]
-                        let len = data.len() as u64;
+                        let len = u64::try_from(data.len()).map_err(|e| {
+                            common::error!("write error: data too large ({e})");
+                            Error::VirtualChannel(0)
+                        })?;
                         #[cfg(target_os = "windows")]
-                        let len = data.len() as u32;
+                        let len = u32::try_from(data.len()).map_err(|e| {
+                            common::error!("write error: data too large ({e})");
+                            Error::VirtualChannel(0)
+                        })?;
 
                         write_ack.can_send.acquire();
 
@@ -517,7 +529,7 @@ unsafe fn generic_virtual_channel_entry(
                             init_handle_ptr,
                             channel_def_ptr,
                             1,
-                            u32::from(rdp_api::VIRTUAL_CHANNEL_VERSION_WIN2000),
+                            rdp_api::VIRTUAL_CHANNEL_VERSION_WIN2000,
                             Some(channel_init_event),
                         )
                     }
@@ -552,7 +564,7 @@ unsafe fn generic_virtual_channel_entry(
                             init_handle,
                             channel_def_ptr,
                             1,
-                            u32::from(rdp_api::VIRTUAL_CHANNEL_VERSION_WIN2000),
+                            rdp_api::VIRTUAL_CHANNEL_VERSION_WIN2000,
                             Some(channel_init_event_ex),
                         )
                     }
