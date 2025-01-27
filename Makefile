@@ -100,8 +100,8 @@ build-debug:
 	cd frontend ; RUSTFLAGS="$(FRONTEND_WINDOWS32_RUST_FLAGS)" cargo build $(FRONTEND_WINDOWS32_ARGS) --target i686-pc-windows-gnu
 	cd frontend ; RUSTFLAGS="$(FRONTEND_WINDOWS64_RUST_FLAGS)" cargo build $(FRONTEND_WINDOWS64_ARGS) --target x86_64-pc-windows-gnu
 	cd frontend ; RUSTFLAGS="$(FRONTEND_LINUX64_DEBUG_RUST_FLAGS)" cargo build $(FRONTEND_LINUX64_ARGS) --target x86_64-unknown-linux-gnu
-	cd backend ; cargo build --target i686-pc-windows-gnu --features log
-	cd backend ; cargo build --target x86_64-pc-windows-gnu --features log
+	cd backend ; cargo build --features log --target i686-pc-windows-gnu
+	cd backend ; cargo build --features log --target x86_64-pc-windows-gnu
 	cd standalone ; cargo build --features log --target x86_64-pc-windows-gnu
 	cd standalone ; cargo build --features log --target x86_64-unknown-linux-gnu
 
@@ -109,10 +109,15 @@ build-debug:
 
 .PHONY: clippy
 clippy:
-	cd common ; cargo $@ --features log
-	cd frontend ; cargo $@
-	cd backend ; cargo $@ --target x86_64-pc-windows-gnu --features log
-	cd standalone ; cargo $@ --features log
+	cd common ; cargo $@
+	cd frontend ; cargo $@ --target i686-pc-windows-gnu
+	cd frontend ; cargo $@ --target x86_64-pc-windows-gnu
+	cd frontend ; cargo $@ --target x86_64-unknown-linux-gnu
+	cd backend ; cargo $@ --target i686-pc-windows-gnu
+	cd backend ; cargo $@ --target x86_64-pc-windows-gnu
+	cd backend ; cargo $@ --target x86_64-unknown-linux-gnu
+	cd standalone ; cargo $@ --target x86_64-pc-windows-gnu
+	cd standalone ; cargo $@ --target x86_64-unknown-linux-gnu
 
 .PHONY: cargo-fmt
 cargo-fmt:
