@@ -15,10 +15,16 @@ impl service::Backend for Server {
         #[cfg(not(target_os = "windows"))]
         let cmd = "sh";
 
+        #[cfg(target_os = "windows")]
+        let args: [String; 0] = [];
+        #[cfg(not(target_os = "windows"))]
+        let args = ["-i"];
+
         crate::debug!("starting {cmd:?}");
 
         thread::scope(|scope| {
             let child = process::Command::new(cmd)
+                .args(args)
                 .stdin(process::Stdio::piped())
                 .stdout(process::Stdio::piped())
                 .stderr(process::Stdio::piped())
