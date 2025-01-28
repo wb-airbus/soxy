@@ -1,9 +1,30 @@
 use super::protocol;
 use crate::{api, service};
-use std::{io, net};
+use std::{
+    io::{self, Write},
+    net,
+};
 
 const SERVICE: api::Service = api::Service::Socks5;
 const SERVICE_KIND: api::ServiceKind = api::ServiceKind::Backend;
+
+fn encode_addr(addr: &net::SocketAddr) -> Result<Vec<u8>, io::Error> {
+    let mut data = Vec::with_capacity(192);
+
+    match addr {
+        net::SocketAddr::V4(ipv4) => {
+            data.write_all(&[0x01; 1])?;
+            data.write_all(&ipv4.ip().octets())?;
+        }
+        net::SocketAddr::V6(ipv6) => {
+            data.write_all(&[0x04; 1])?;
+            data.write_all(&ipv6.ip().octets())?;
+        }
+    }
+    data.write_all(&addr.port().to_be_bytes())?;
+
+    Ok(data)
+}
 
 pub struct Server {}
 
@@ -30,7 +51,7 @@ impl Server {
             Ok(server) => {
                 crate::debug!("connected to {to_tcp:#?}");
 
-                let data = super::encode_addr(&server.local_addr()?)?;
+                let data = encode_addr(&server.local_addr()?)?;
                 protocol::Response::Ok(data).send(&mut stream)?;
 
                 crate::debug!("starting stream copy");
@@ -41,7 +62,8 @@ impl Server {
     }
 
     fn command_bind(mut stream: service::RdpStream<'_>) -> Result<(), io::Error> {
-        let local_ip = local_ip_address::local_ip().unwrap();
+        let local_ip = local_ip_address::local_ip()
+            .map_err(|e| io::Error::new(io::ErrorKind::AddrNotAvailable, e.to_string()))?;
         let from_tcp = net::SocketAddr::new(local_ip, 0);
 
         crate::info!("binding to {from_tcp}");
@@ -52,7 +74,7 @@ impl Server {
                 protocol::Response::BindFailed.send(&mut stream)
             }
             Ok(server) => {
-                let data = super::encode_addr(&server.local_addr()?)?;
+                let data = encode_addr(&server.local_addr()?)?;
                 protocol::Response::Ok(data).send(&mut stream)?;
 
                 match server.accept() {
@@ -61,7 +83,7 @@ impl Server {
                         protocol::Response::BindFailed.send(&mut stream)
                     }
                     Ok((client, client_addr)) => {
-                        let data = super::encode_addr(&client_addr)?;
+                        let data = encode_addr(&client_addr)?;
                         protocol::Response::Ok(data).send(&mut stream)?;
 
                         crate::debug!("starting stream copy");

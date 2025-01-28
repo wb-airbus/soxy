@@ -1,5 +1,6 @@
 use std::{io, net};
 
+pub(crate) const VERSION: u8 = 0x05;
 pub(crate) const AUTHENTICATION_NONE: u8 = 0x00;
 
 const ID_CMD_CONNECT: u8 = 0x01;
@@ -32,7 +33,7 @@ impl Command {
         let mut buf = [0; 4];
         reader.read_exact(&mut buf)?;
 
-        if buf[0] != super::VERSION {
+        if buf[0] != VERSION {
             let ret = buf[0];
             //let buf = [buf[0], 0x07, 0x00];
             //self.stream.write_all(&buf)?;
@@ -197,7 +198,7 @@ impl Response {
         match self {
             Self::NetworkUnreachable => {
                 let buf = [
-                    super::VERSION,
+                    VERSION,
                     RSP_NETWORK_UNREACHABLE,
                     0x00,
                     0x01,
@@ -212,7 +213,7 @@ impl Response {
             }
             Self::HostUnreachable => {
                 let buf = [
-                    super::VERSION,
+                    VERSION,
                     RSP_HOST_UNREACHABLE,
                     0x00,
                     0x01,
@@ -227,7 +228,7 @@ impl Response {
             }
             Self::ConnectionRefused => {
                 let buf = [
-                    super::VERSION,
+                    VERSION,
                     RSP_CONNECTION_REFUSED,
                     0x00,
                     0x01,
@@ -242,7 +243,7 @@ impl Response {
             }
             Self::BindFailed => {
                 let buf = [
-                    super::VERSION,
+                    VERSION,
                     RSP_GENERAL_SOCKS_SERVER_FAILURE,
                     0x00,
                     0x01,
@@ -256,7 +257,7 @@ impl Response {
                 writer.write_all(&buf)?;
             }
             Self::Ok(data) => {
-                writer.write_all(&[super::VERSION, RSP_OK, 0x00])?;
+                writer.write_all(&[VERSION, RSP_OK, 0x00])?;
                 writer.write_all(data)?;
             }
         }

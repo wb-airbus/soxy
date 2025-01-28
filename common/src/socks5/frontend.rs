@@ -103,7 +103,7 @@ impl Client {
         self.stream.read_exact(&mut buf)?;
 
         // client version ?
-        if buf[0] != super::VERSION {
+        if buf[0] != protocol::VERSION {
             return Err(Error::UnsupportedVersion(buf[0]));
         }
 
@@ -121,7 +121,7 @@ impl Client {
         }
 
         // server proposes NO AUTHENTICATION
-        let buf = [super::VERSION, protocol::AUTHENTICATION_NONE];
+        let buf = [protocol::VERSION, protocol::AUTHENTICATION_NONE];
         self.stream.write_all(&buf)?;
         self.stream.flush()?;
 
@@ -167,20 +167,20 @@ impl Client {
             Err(e) => match e {
                 Error::Io(e) => Err(e),
                 Error::UnsupportedVersion(_) => {
-                    let buf = [super::VERSION, 0xFF];
+                    let buf = [protocol::VERSION, 0xFF];
                     self.stream.write_all(&buf)?;
                     self.stream.flush()?;
                     Ok(())
                 }
                 Error::UnsupportedAuthentication(_) => {
-                    let buf = [super::VERSION, 0xFF];
+                    let buf = [protocol::VERSION, 0xFF];
                     self.stream.write_all(&buf)?;
                     self.stream.flush()?;
                     Ok(())
                 }
                 Error::UnsupportedCommand(_) => {
                     let buf = [
-                        super::VERSION,
+                        protocol::VERSION,
                         0x07,
                         0x00,
                         0x01,
@@ -197,7 +197,7 @@ impl Client {
                 }
                 Error::AddressTypeNotSupported(_) => {
                     let buf = [
-                        super::VERSION,
+                        protocol::VERSION,
                         0x08,
                         0x00,
                         0x01,

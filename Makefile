@@ -131,4 +131,3 @@ cargo-fmt:
 	cd frontend ; cargo $@
 	cd backend ; cargo $@
 	cd standalone ; cargo $@
-
