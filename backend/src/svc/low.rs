@@ -29,7 +29,8 @@ impl<'a> Svc<'a> {
         };
 
         if wtshandle.is_null() {
-            return Err(super::Error::VirtualChannelOpenStaticChannelFailed);
+            let err = unsafe { ws::Win32::Foundation::GetLastError() };
+            return Err(super::Error::VirtualChannelOpenStaticChannelFailed(err));
         }
 
         let mut filehandleptr: *mut ws::Win32::Foundation::HANDLE = ptr::null_mut();

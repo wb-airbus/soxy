@@ -9,7 +9,7 @@ pub(crate) enum Error {
     LibraryLoading(libloading::Error),
     WsaStartupFailed(i32),
     Io(io::Error),
-    VirtualChannelOpenStaticChannelFailed,
+    VirtualChannelOpenStaticChannelFailed(u32),
     VirtualChannelReadFailed(u32),
     VirtualChannelWriteFailed(u32),
     VirtualChannelQueryFailed(u32),
@@ -24,7 +24,9 @@ impl fmt::Display for Error {
             Self::LibraryLoading(e) => write!(f, "library loading error: {e}"),
             Self::WsaStartupFailed(e) => write!(f, "WSAStartup failed with error code {e}"),
             Self::Io(e) => write!(f, "I/O error: {e}"),
-            Self::VirtualChannelOpenStaticChannelFailed => write!(f, "virtual channel open failed"),
+            Self::VirtualChannelOpenStaticChannelFailed(err) => {
+                write!(f, "virtual channel open failed (last_error = {err})")
+            }
             Self::VirtualChannelReadFailed(err) => {
                 write!(f, "virtual channel read failed (last error = {err})")
             }
