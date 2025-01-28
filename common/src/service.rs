@@ -45,7 +45,7 @@ impl Channel {
         Ok(())
     }
 
-    pub fn connect(&self, service: api::Service) -> Result<RdpStream, io::Error> {
+    pub(crate) fn connect(&self, service: api::Service) -> Result<RdpStream, io::Error> {
         let client_id = api::new_client_id();
 
         let (from_rdp_send, from_rdp_recv) = crossbeam_channel::bounded(CLIENT_CHUNK_BUFFER_SIZE);
@@ -312,10 +312,6 @@ impl<'a> RdpStreamControl<'a> {
         self.0.read().unwrap().client_id
     }
 
-    fn service(&self) -> api::Service {
-        self.0.read().unwrap().service
-    }
-
     fn is_connected(&self) -> bool {
         self.0.read().unwrap().state.is_connected()
     }
@@ -371,29 +367,25 @@ impl<'a> RdpStream<'a> {
         }
     }
 
-    pub fn client_id(&self) -> api::ClientId {
+    pub(crate) fn client_id(&self) -> api::ClientId {
         self.control.client_id()
     }
 
-    pub fn service(&self) -> api::Service {
-        self.control.service()
-    }
-
-    pub fn accept(&self) -> Result<(), io::Error> {
+    fn accept(&self) -> Result<(), io::Error> {
         self.control.accept()
     }
 
-    pub fn connect(&self) -> Result<(), io::Error> {
+    fn connect(&self) -> Result<(), io::Error> {
         self.control.connect()
     }
 
-    pub fn disconnect(&mut self) -> Result<(), io::Error> {
+    pub(crate) fn disconnect(&mut self) -> Result<(), io::Error> {
         self.writer.flush()?;
         self.control.disconnect();
         Ok(())
     }
 
-    pub fn split(self) -> (RdpReader<'a>, RdpWriter<'a>) {
+    pub(crate) fn split(self) -> (RdpReader<'a>, RdpWriter<'a>) {
         (self.reader, self.writer)
     }
 }
@@ -414,7 +406,7 @@ impl io::Write for RdpStream<'_> {
     }
 }
 
-pub struct RdpReader<'a> {
+pub(crate) struct RdpReader<'a> {
     control: RdpStreamControl<'a>,
     from_rdp: crossbeam_channel::Receiver<api::Chunk>,
     last: Option<(api::Chunk, usize)>,
@@ -485,7 +477,7 @@ impl io::Read for RdpReader<'_> {
 }
 
 #[derive(Clone)]
-pub struct RdpWriter<'a> {
+pub(crate) struct RdpWriter<'a> {
     control: RdpStreamControl<'a>,
     buffer: [u8; api::Chunk::max_payload_length()],
     buffer_len: usize,
