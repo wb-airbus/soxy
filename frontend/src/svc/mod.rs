@@ -11,7 +11,7 @@ mod semaphore;
 const MAX_CHUNKS_IN_FLIGHT: usize = 64;
 
 #[derive(Clone, Debug)]
-pub(crate) enum State {
+pub enum State {
     Initialized,
     Connected(Option<String>),
     Disconnected,
@@ -46,7 +46,7 @@ struct WriteStatus {
 
 static WRITE_ACK: sync::RwLock<Option<WriteStatus>> = sync::RwLock::new(None);
 
-pub(crate) enum Error {
+pub enum Error {
     NotReady,
     VirtualChannel(u32),
     InvalidState(State),
@@ -461,11 +461,6 @@ unsafe fn generic_virtual_channel_entry(
     entry_points: Entrypoints,
     init_handle: rdp_api::PVOID,
 ) -> rdp_api::BOOL {
-    if let Err(e) = crate::init() {
-        eprintln!("{e}");
-        return rdp_api::FALSE;
-    }
-
     #[cfg(target_os = "windows")]
     {
         common::debug!("calling WSAStartup");
@@ -486,6 +481,8 @@ unsafe fn generic_virtual_channel_entry(
             return rdp_api::FALSE;
         }
     }
+
+    crate::start();
 
     let cname = ffi::CString::new(common::VIRTUAL_CHANNEL_NAME).unwrap();
     let cname_ptr = cname.as_ptr();

@@ -25,7 +25,7 @@ enum-glob-use = "allow"
 missing-errors-doc = "allow"
 
 [lib]
-crate-type = [ "cdylib" ]
+crate-type = [ "cdylib", "rlib" ]
 name = "soxy"
 
 [profile.release]
@@ -35,6 +35,5 @@ strip = true
 lto = true
 
 [features]
-default = [ "log" ]
 log = [ "common/log", "dep:log" ]
 citrix = []

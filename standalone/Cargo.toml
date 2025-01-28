@@ -4,6 +4,7 @@ version = "1.1.0"
 edition = "2021"
 
 [dependencies]
+frontend = { path = "../frontend" }
 common = { path = "../common" }
 crossbeam-channel = "0"
 log = { version = "0", optional = true }
@@ -26,4 +27,4 @@ name = "soxy_standalone"
 path = "src/bin/standalone.rs"
 
 [features]
-log = [ "common/log", "dep:log" ]
+log = [ "dep:log", "common/log", "frontend/log" ]

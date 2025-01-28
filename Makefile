@@ -87,9 +87,9 @@ distclean: clean
 
 .PHONY: build-release
 build-release:
-	cd frontend ; RUSTFLAGS="$(FRONTEND_WINDOWS32_RUST_FLAGS)" cargo build $(FRONTEND_WINDOWS32_ARGS) --release --target i686-pc-windows-gnu
-	cd frontend ; RUSTFLAGS="$(FRONTEND_WINDOWS64_RUST_FLAGS)" cargo build $(FRONTEND_WINDOWS64_ARGS) --release --target x86_64-pc-windows-gnu
-	cd frontend ; RUSTFLAGS="$(FRONTEND_LINUX64_RELEASE_RUST_FLAGS)" cargo build $(FRONTEND_LINUX64_ARGS) --release --target x86_64-unknown-linux-gnu
+	cd frontend ; RUSTFLAGS="$(FRONTEND_WINDOWS32_RUST_FLAGS)" cargo build $(FRONTEND_WINDOWS32_ARGS) --release --features log --target i686-pc-windows-gnu
+	cd frontend ; RUSTFLAGS="$(FRONTEND_WINDOWS64_RUST_FLAGS)" cargo build $(FRONTEND_WINDOWS64_ARGS) --release --features log --target x86_64-pc-windows-gnu
+	cd frontend ; RUSTFLAGS="$(FRONTEND_LINUX64_RELEASE_RUST_FLAGS)" cargo build $(FRONTEND_LINUX64_ARGS) --release --features log --target x86_64-unknown-linux-gnu
 #	cd backend ; RUSTFLAGS="$(BACKEND_WINDOWS32_RUST_FLAGS)" cargo +nightly build --release --target i686-pc-windows-gnu $(BACKEND_WINDOWS32_BUILD_FLAGS)
 	cd backend ; RUSTFLAGS="$(BACKEND_WINDOWS64_RUST_FLAGS)" cargo +nightly build --release --target x86_64-pc-windows-gnu $(BACKEND_WINDOWS64_BUILD_FLAGS)
 	cd standalone ; cargo build --release --features log --target x86_64-pc-windows-gnu
@@ -97,9 +97,9 @@ build-release:
 
 .PHONY: build-debug
 build-debug:
-	cd frontend ; RUSTFLAGS="$(FRONTEND_WINDOWS32_RUST_FLAGS)" cargo build $(FRONTEND_WINDOWS32_ARGS) --target i686-pc-windows-gnu
-	cd frontend ; RUSTFLAGS="$(FRONTEND_WINDOWS64_RUST_FLAGS)" cargo build $(FRONTEND_WINDOWS64_ARGS) --target x86_64-pc-windows-gnu
-	cd frontend ; RUSTFLAGS="$(FRONTEND_LINUX64_DEBUG_RUST_FLAGS)" cargo build $(FRONTEND_LINUX64_ARGS) --target x86_64-unknown-linux-gnu
+	cd frontend ; RUSTFLAGS="$(FRONTEND_WINDOWS32_RUST_FLAGS)" cargo build $(FRONTEND_WINDOWS32_ARGS) --features log --target i686-pc-windows-gnu
+	cd frontend ; RUSTFLAGS="$(FRONTEND_WINDOWS64_RUST_FLAGS)" cargo build $(FRONTEND_WINDOWS64_ARGS) --features log --target x86_64-pc-windows-gnu
+	cd frontend ; RUSTFLAGS="$(FRONTEND_LINUX64_DEBUG_RUST_FLAGS)" cargo build $(FRONTEND_LINUX64_ARGS) --features log --target x86_64-unknown-linux-gnu
 	cd backend ; cargo build --features log --target i686-pc-windows-gnu
 	cd backend ; cargo build --features log --target x86_64-pc-windows-gnu
 	cd standalone ; cargo build --features log --target x86_64-pc-windows-gnu
