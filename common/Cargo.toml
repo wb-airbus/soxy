@@ -4,11 +4,13 @@ version = "1.1.0"
 edition = "2021"
 
 [dependencies]
-clipboard-win = "5"
 crossbeam-channel = "0"
 local-ip-address = "0"
 log = { version = "0", optional = true }
 simplelog = { version = "0", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+clipboard-win = "5"
 
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
