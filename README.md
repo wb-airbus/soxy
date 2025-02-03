@@ -163,7 +163,7 @@ cd frontend
 cargo build --release
 ```
 
-This produces `target/debug/libsoxy.dylib' or `target/release/libsoxy.dylib` installable
+This produces `target/debug/libsoxy.dylib` or `target/release/libsoxy.dylib` installable
 as described in the next section.
 
 ### 🔌 Frontend Installation
