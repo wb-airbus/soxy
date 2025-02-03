@@ -1,4 +1,6 @@
 use std::ffi;
+#[cfg(feature = "log")]
+use std::{env, fs};
 
 pub mod api;
 pub mod log;
@@ -12,12 +14,10 @@ pub mod socks5;
 pub const VIRTUAL_CHANNEL_NAME: &ffi::CStr = c"SOXY";
 
 #[cfg(not(feature = "log"))]
-pub const fn init_logs() -> Result<(), String> {
-    Ok(())
-}
+pub const fn init_logs(_with_file: bool) {}
 
 #[cfg(feature = "log")]
-pub fn init_logs() -> Result<(), ::log::SetLoggerError> {
+pub fn init_logs(with_file: bool) {
     #[cfg(debug_assertions)]
     let level_filter = simplelog::LevelFilter::Debug;
 
@@ -32,10 +32,27 @@ pub fn init_logs() -> Result<(), ::log::SetLoggerError> {
         .set_time_format_rfc2822()
         .build();
 
-    simplelog::TermLogger::init(
+    let mut loggers: Vec<Box<dyn simplelog::SharedLogger>> = vec![simplelog::TermLogger::new(
         level_filter,
-        config,
+        config.clone(),
         simplelog::TerminalMode::Mixed,
         simplelog::ColorChoice::Auto,
-    )
+    )];
+
+    if with_file {
+        let mut path = env::temp_dir();
+        path.push("soxy.log");
+
+        if let Ok(file) = fs::File::options()
+            .create(true)
+            .append(false)
+            .truncate(true)
+            .write(true)
+            .open(path)
+        {
+            loggers.push(simplelog::WriteLogger::new(level_filter, config, file));
+        }
+    }
+
+    let _ = simplelog::CombinedLogger::init(loggers);
 }

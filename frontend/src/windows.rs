@@ -119,9 +119,7 @@ fn rdp_unregister() {
 extern "system" fn DllRegisterServer() -> ws::core::HRESULT {
     unsafe { ws::Win32::System::Console::AllocConsole() };
 
-    if let Err(e) = common::init_logs() {
-        eprintln!("failed to initialize log: {e}");
-    }
+    common::init_logs(false);
 
     let mut is_ok = true;
 
@@ -151,9 +149,7 @@ extern "system" fn DllRegisterServer() -> ws::core::HRESULT {
 extern "system" fn DllUnregisterServer() -> ws::core::HRESULT {
     unsafe { ws::Win32::System::Console::AllocConsole() };
 
-    if let Err(e) = common::init_logs() {
-        eprintln!("failed to initialize log: {e}");
-    }
+    common::init_logs(false);
 
     rdp_unregister();
 

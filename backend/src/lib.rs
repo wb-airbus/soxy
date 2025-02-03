@@ -207,9 +207,7 @@ fn main_res() -> Result<(), Error> {
 }
 
 pub fn main() {
-    if let Err(e) = common::init_logs() {
-        eprintln!("failed to initialize log: {e}");
-    }
+    common::init_logs(false);
 
     common::debug!("starting up");
 
