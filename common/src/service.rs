@@ -1,4 +1,4 @@
-use crate::{api, clipboard, command, ftp, socks5};
+use crate::{api, clipboard, command, ftp, socks5, stage0};
 use std::{
     collections::{self, hash_map},
     io::{self, Write},
@@ -116,6 +116,11 @@ impl Channel {
                             }
                             api::Service::Socks5 => {
                                 if let Err(e) = socks5::backend::Server::accept(stream) {
+                                    crate::error!("error: {e}");
+                                }
+                            }
+                            api::Service::Stage0 => {
+                                if let Err(e) = stage0::backend::Server::accept(stream) {
                                     crate::error!("error: {e}");
                                 }
                             }

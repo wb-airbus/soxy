@@ -16,6 +16,7 @@ frontend bridges access to backend functions by exposing VDI-side
 resources locally using a common protocol. At the time of writing,
 soxy provides:
 
+- a bootstrap module using a PowerShell backend script;
 - a (basic) FTP server to access the virtual machine's filesystem;
 - a telnet-like interface to spawn and interact with a console/shell executed on the
   virtual machine;
@@ -327,6 +328,10 @@ accessible to the backend user.
 
 Configure on your client machine to use `localhost:1080` as a SOCKS5
 proxy. Connections will originate from the remote host.
+
+#### Stage0
+
+_TODO_
 
 ## 🚧 Contributing
 

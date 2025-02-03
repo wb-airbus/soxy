@@ -6,6 +6,7 @@ const SERVICE_CLIPBOARD: &str = "clipboard";
 const SERVICE_COMMAND: &str = "command";
 const SERVICE_FTP: &str = "ftp";
 const SERVICE_SOCKS5: &str = "socks5";
+const SERVICE_STAGE0: &str = "stage0";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Service {
@@ -13,6 +14,7 @@ pub enum Service {
     Command,
     Ftp,
     Socks5,
+    Stage0,
 }
 
 impl Service {
@@ -22,6 +24,7 @@ impl Service {
             Self::Command => SERVICE_COMMAND,
             Self::Ftp => SERVICE_FTP,
             Self::Socks5 => SERVICE_SOCKS5,
+            Self::Stage0 => SERVICE_STAGE0,
         }
     }
 
@@ -40,6 +43,7 @@ impl<'a> TryFrom<&'a [u8]> for Service {
             SERVICE_COMMAND => Ok(Self::Command),
             SERVICE_FTP => Ok(Self::Ftp),
             SERVICE_SOCKS5 => Ok(Self::Socks5),
+            SERVICE_STAGE0 => Ok(Self::Stage0),
             _ => Err(s),
         }
     }

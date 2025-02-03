@@ -10,6 +10,7 @@ pub mod clipboard;
 pub mod command;
 pub mod ftp;
 pub mod socks5;
+pub mod stage0;
 
 pub const VIRTUAL_CHANNEL_NAME: &ffi::CStr = c"SOXY";
 

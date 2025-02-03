@@ -1,7 +1,7 @@
 use common::{
     api, clipboard, command, ftp,
     service::{self, Frontend},
-    socks5,
+    socks5, stage0,
 };
 use std::{fmt, io, net, sync, thread};
 
@@ -116,6 +116,11 @@ pub fn init(
     //let timeout_socks5 = None;
     let mut server_socks5 = socks5::frontend::Server::bind(from_tcp_socks5)?;
 
+    let from_tcp_stage0 =
+        net::SocketAddr::new(net::IpAddr::V4(net::Ipv4Addr::new(127, 0, 0, 1)), 1081);
+    //let timeout_stage0 = None;
+    let mut server_stage0 = stage0::frontend::Server::bind(from_tcp_stage0)?;
+
     thread::Builder::new()
         .name("frontend".into())
         .spawn(move || {
@@ -160,6 +165,17 @@ pub fn init(
                             common::error!("{} error: {e}", api::Service::Socks5);
                         } else {
                             common::debug!("{} terminated", api::Service::Socks5);
+                        }
+                    })
+                    .unwrap();
+
+                thread::Builder::new()
+                    .name(format!("{}", api::Service::Stage0))
+                    .spawn_scoped(scope, || {
+                        if let Err(e) = server_stage0.start(&frontend_channel) {
+                            common::error!("{} error: {e}", api::Service::Stage0);
+                        } else {
+                            common::debug!("{} terminated", api::Service::Stage0);
                         }
                     })
                     .unwrap();
