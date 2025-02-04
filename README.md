@@ -179,7 +179,7 @@ Copy `libsoxy.dylib` to `/Applications/VMware Horizon Client.app/Contents/Librar
 Copy the frontend library into the VMware `rdpvcbridge` directory:
 
 ```bash
-sudo cp frontend/linux64/libsoxy.so /usr/lib/vmware/rdpvcbridge/
+sudo cp release/frontend/linux64/libsoxy.so /usr/lib/vmware/rdpvcbridge/
 ```
 
 **Note**: on recent versions of VMware Horizon client, the directory has moved to `/usr/lib/omnissa/rdpvcbridge/`.
@@ -201,21 +201,36 @@ regsvr32.exe /u soxy.dll
 
 #### For FreeRDP and Remmina (Linux)
 
-Create the directory `/usr/lib/freerdp3` and copy the library to it. Be
-careful, the name of the library **must** be `libsoxy-client.so` (not
-`libsoxy.so`) otherwise the library will not be found by Freerdp/Remmina.
+Create the FreeRDP plugin directory and copy the library to it. Be careful, the
+name of the library **must** be `libsoxy-client.so` (not `libsoxy.so`) otherwise
+the library will not be found by FreeRDP/Remmina:
 
-```bash
-sudo mkdir -p /usr/lib/freerdp3
-sudo cp frontend/linux64/libsoxy.so /usr/lib/freerdp3/libsoxy-client.so
-```
+* For FreeRDP 2:
 
-When you launch Freerdp from the command line, you have to add the
-argument `/vc:soxy` to tell Freerdp to load the library, for example:
+  ```bash
+  sudo mkdir -p /usr/lib/x86_64-linux-gnu/freerdp2
+  sudo cp release/frontend/linux64/libsoxy.so /usr/lib/x86_64-linux-gnu/freerdp2/libsoxy-client.so
+  ```
+* For FreeRDP 3:
 
-```bash
-sdl-freerdp3 /dynamic-resolution /log-level:INFO /u:User /v:192.168.42.42 /vc:soxy
-```
+  ```bash
+  sudo mkdir -p /usr/lib/freerdp3
+  sudo cp release/frontend/linux64/libsoxy.so /usr/lib/freerdp3/libsoxy-client.so
+  ```
+
+When you launch FreeRDP from the command line, you have to add the argument
+`/vc:soxy` to tell FreeRDP to load the library, for example:
+
+* For FreeRDP 2:
+
+  ```bash
+  xfreerdp /dynamic-resolution /log-level:INFO /u:User /v:192.168.42.42 /vc:soxy
+  ```
+* For FreeRDP 3:
+
+  ```bash
+  sdl-freerdp3 /dynamic-resolution /log-level:INFO /u:User /v:192.168.42.42 /vc:soxy
+  ```
 
 For Remmina, edit your RDP connection, got to the "Advanced" tab and
 set the "Static virtual channel" parameter to `soxy`.
