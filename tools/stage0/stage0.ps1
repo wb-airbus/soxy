@@ -3,16 +3,7 @@
 # Path to the file in which to write the transferred data
 $OUTPUT_PATH = "favicon.ico"
 
-# Path to the supported backend DLLs:
-# - Citrix (C:\Program Files\Citrix\ICAService\wfapi64.dll)
-#   The 32-bit version (wfapi.dll) should also work
-$WFAPI_PATH = "wfapi64.dll"
-# - Horizon (TODO)
-$VDPAPI_PATH = "vdp_rdpvcbridge.dll"
-# - RDP (TODO)
-$WTSAPI_PATH = "wtsapi32.dll"
-
-# Name of the virtual channel to open (max 7 characters)
+# Name of the virtual channel to open
 $VC_NAME = "SOXY"
 
 # Name of the soxy service we are implementing
@@ -26,6 +17,15 @@ $SOXY_SVC_NAME = "stage0"
 # Maximum number of bytes which can be read at at time from the virtual channel
 [UInt32] $SOXY_CHUNK_MAX_LEN = 1600
 
+# Path to the supported backend DLLs:
+# - Citrix (C:\Program Files\Citrix\ICAService\wfapi64.dll)
+#   The 32-bit version (wfapi.dll) should also work
+$WFAPI_PATH = "wfapi64.dll"
+# - Horizon (C:\Program Files\VMware\VMware View\Client\x64\vdp_rdpvcbridge.dll)
+$VDPAPI_PATH = "vdp_rdpvcbridge.dll"
+# - RDP (C:\Windows\SysWOW64\wtsapi32.dll)
+$WTSAPI_PATH = "wtsapi32.dll"
+
 # Error handling is performed manually in the script to avoid exiting with an
 # unclean state (e.g. file or virtual channel still open)
 $ErrorActionPreference = "Continue"
@@ -33,9 +33,9 @@ $ErrorActionPreference = "Continue"
 # Print verbose output instead of ignoring it
 #$VerbosePreference = "Continue"
 
-### DLL import
+### Backends
 
-# Define function prototypes from the various DLLs to be able to use them here
+# Define function prototypes for each backend DLL
 # Type mapping: https://www.codeproject.com/Articles/9714/Win32-API-C-to-NET
 
 # Citrix
@@ -81,12 +81,12 @@ public enum WF_VIRTUAL_CLASS {
 
 public static class WFApi {
     public static IntPtr WF_CURRENT_SERVER_HANDLE = IntPtr.Zero;
-    public static uint WF_CURRENT_SESSION = 0xffffffff;
+    public static UInt32 WF_CURRENT_SESSION = 0xffffffff;
 
     [DllImport(@"$WFAPI_PATH", CharSet=CharSet.Unicode, CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
     public static extern Boolean WFQuerySessionInformation(
         IntPtr        hServer,
-        uint          SessionId,
+        UInt32        SessionId,
         WF_INFO_CLASS WFInfoClass,
         out string    ppBuffer,
         out UInt32    pBytesReturned
@@ -125,7 +125,7 @@ public static class WFApi {
     public static extern Boolean WFVirtualChannelQuery(
         IntPtr           hChannelHandle,
         WF_VIRTUAL_CLASS VirtualClass,
-        out byte[]       ppBuffer,
+        out IntPtr       ppBuffer,
         out UInt32       pBytesReturned
     );
 
@@ -141,7 +141,85 @@ Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 
+public enum VDP_INFO_CLASS {
+    VDPInitialProgram,
+    VDPApplicationName,
+    VDPWorkingDirectory,
+    VDPOEMId,
+    VDPSessionId,
+    VDPUserName,
+    VDPWinStationName,
+    VDPDomainName,
+    VDPConnectState,
+    VDPClientBuildNumber,
+    VDPClientName,
+    VDPClientDirectory,
+    VDPClientProductId,
+    VDPClientHardwareId,
+    VDPClientAddress,
+    VDPClientDisplay,
+    VDPClientProtocolType
+};
+
+public enum VDP_VIRTUAL_CLASS {
+    VDPVirtualClientData,
+    VDPVirtualFileHandle
+};
+
 public static class VDPApi {
+    public static IntPtr VDP_CURRENT_SERVER_HANDLE = IntPtr.Zero;
+    public static UInt32 VDP_CURRENT_SESSION = 0xffffffff;
+
+    [DllImport(@"$VDPAPI_PATH", CharSet=CharSet.Unicode, CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
+    public static extern Boolean VDP_QuerySessionInformation(
+        IntPtr         hServer,
+        UInt32         SessionId,
+        VDP_INFO_CLASS VDPInfoClass,
+        out string     ppBuffer,
+        out UInt32     pBytesReturned
+    );
+
+    [DllImport(@"$VDPAPI_PATH", CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
+    public static extern IntPtr VDP_VirtualChannelOpen(
+        IntPtr hServer,
+        UInt32 SessionId,
+        string pVirtualName
+    );
+
+    [DllImport(@"$VDPAPI_PATH", CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
+    public static extern Boolean VDP_VirtualChannelClose(
+        IntPtr hChannelHandle
+    );
+
+    [DllImport(@"$VDPAPI_PATH", CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
+    public static extern Boolean VDP_VirtualChannelRead(
+        IntPtr     hChannelHandle,
+        UInt32     TimeOut,
+        byte[]     Buffer,
+        UInt32     BufferSize,
+        out UInt32 pBytesRead
+    );
+
+    [DllImport(@"$VDPAPI_PATH", CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
+    public static extern Boolean VDP_VirtualChannelWrite(
+        IntPtr     hChannelHandle,
+        byte[]     Buffer,
+        UInt32     Length,
+        out UInt32 pBytesWritten
+    );
+
+    [DllImport(@"$VDPAPI_PATH", CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
+    public static extern Boolean VDP_VirtualChannelQuery(
+        IntPtr            hChannelHandle,
+        VDP_VIRTUAL_CLASS VirtualClass,
+        out IntPtr        ppBuffer,
+        out UInt32        pBytesReturned
+    );
+
+    [DllImport(@"$VDPAPI_PATH", CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
+    public static extern void VDP_FreeMemory(
+        IntPtr pMemory
+    );
 }
 "@
 
@@ -150,12 +228,270 @@ Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 
+public enum WTS_INFO_CLASS {
+    WTSInitialProgram,
+    WTSApplicationName,
+    WTSWorkingDirectory,
+    WTSOEMId,
+    WTSSessionId,
+    WTSUserName,
+    WTSWinStationName,
+    WTSDomainName,
+    WTSConnectState,
+    WTSClientBuildNumber,
+    WTSClientName,
+    WTSClientDirectory,
+    WTSClientProductId,
+    WTSClientHardwareId,
+    WTSClientAddress,
+    WTSClientDisplay,
+    WTSClientProtocolType,
+};
+
+public enum WTS_VIRTUAL_CLASS {
+    WTSVirtualClientData,
+    WTSVirtualFileHandle
+};
+
 public static class WTSApi {
+    public static IntPtr WTS_CURRENT_SERVER_HANDLE = IntPtr.Zero;
+    public static UInt32 WTS_CURRENT_SESSION = 0xffffffff;
+
+    [DllImport(@"$WTSAPI_PATH", CharSet=CharSet.Unicode, CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
+    public static extern Boolean WTSQuerySessionInformation(
+        IntPtr         hServer,
+        UInt32         SessionId,
+        WTS_INFO_CLASS WTSInfoClass,
+        out string     ppBuffer,
+        out UInt32     pBytesReturned
+    );
+
+    [DllImport(@"$WTSAPI_PATH", CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
+    public static extern IntPtr WTSVirtualChannelOpen(
+        IntPtr hServer,
+        UInt32 SessionId,
+        string pVirtualName
+    );
+
+    [DllImport(@"$WTSAPI_PATH", CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
+    public static extern Boolean WTSVirtualChannelClose(
+        IntPtr hChannelHandle
+    );
+
+    [DllImport(@"$WTSAPI_PATH", CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
+    public static extern Boolean WTSVirtualChannelRead(
+        IntPtr     hChannelHandle,
+        UInt32     TimeOut,
+        byte[]     Buffer,
+        UInt32     BufferSize,
+        out UInt32 pBytesRead
+    );
+
+    [DllImport(@"$WTSAPI_PATH", CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
+    public static extern Boolean WTSVirtualChannelWrite(
+        IntPtr     hChannelHandle,
+        byte[]     Buffer,
+        UInt32     Length,
+        out UInt32 pBytesWritten
+    );
+
+    [DllImport(@"$WTSAPI_PATH", CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
+    public static extern Boolean WTSVirtualChannelQuery(
+        IntPtr            hChannelHandle,
+        WTS_VIRTUAL_CLASS VirtualClass,
+        out IntPtr        ppBuffer,
+        out UInt32        pBytesReturned
+    );
+
+    [DllImport(@"$WTSAPI_PATH", CallingConvention=CallingConvention.Winapi, SetLastError=true, ThrowOnUnmappableChar=true)]
+    public static extern void WTSFreeMemory(
+        IntPtr pMemory
+    );
 }
 "@
 
-# Add structures defined in icaC2 header files to access them in PowerShell
-# To simplify, we only keep the entries which are used here
+### Wrappers
+
+# Define a generic base class which all backends will overload
+class ApiWrapper {
+    static [Boolean] QuerySessionInformation([ref] $pSessionInfo, [ref] $ByteCount) {
+        return $false
+    }
+
+    static [IntPtr] VirtualChannelOpen([string] $name) {
+        return IntPtr.Zero
+    }
+
+    static [Boolean] VirtualChannelClose([IntPtr] $vcHandle) {
+        return $false
+    }
+
+    static [Boolean] VirtualChannelRead([IntPtr] $vcHandle, [UInt32] $timeout, [Byte[]] $buffer, [UInt32] $bufferSize, [ref] $bytesRead) {
+        return $false
+    }
+
+    static [Boolean] VirtualChannelWrite([IntPtr] $vcHandle, [Byte[]] $buffer, [UInt32] $bufferSize, [ref] $bytesWritten) {
+        return $false
+    }
+
+    static [Boolean] VirtualChannelQuery([IntPtr] $vcHandle, [ref] $buffer, [ref] $bufferSize) {
+        return $false
+    }
+}
+
+# PowerShell classe definitions cannot reference types which do not exists. If
+# they are defined *before* the Add-Type calls above, then the script will fail
+# to load:
+# https://stackoverflow.com/questions/42837447/powershell-unable-to-find-type-when-using-ps-5-classes
+# One solution is to use "Invoke-Expression" to defer the definition
+
+# Citrix
+Invoke-Expression @'
+class WFApiWrapper : ApiWrapper {
+    static [Boolean] QuerySessionInformation([ref] $pSessionInfo, [ref] $ByteCount) {
+        return [WFApi]::WFQuerySessionInformation(
+            [WFApi]::WF_CURRENT_SERVER_HANDLE,
+            [WFApi]::WF_CURRENT_SESSION,
+            [WF_INFO_CLASS]::WFSessionId,
+            $pSessionInfo,
+            $ByteCount
+        )
+    }
+
+    static [IntPtr] VirtualChannelOpen([string] $name) {
+        return [WFApi]::WFVirtualChannelOpen(
+            [WFApi]::WF_CURRENT_SERVER_HANDLE,
+            [WFApi]::WF_CURRENT_SESSION,
+            $name
+        )
+    }
+
+    static [Boolean] VirtualChannelClose([IntPtr] $vcHandle) {
+        return [WFApi]::WFVirtualChannelClose($vcHandle)
+    }
+
+    static [Boolean] VirtualChannelRead([IntPtr] $vcHandle, [UInt32] $timeout, [Byte[]] $buffer, [UInt32] $bufferSize, [ref] $bytesRead) {
+        return [WFApi]::WFVirtualChannelRead(
+            $vcHandle, $timeout, $buffer, $bufferSize, $bytesRead
+        )
+    }
+
+    static [Boolean] VirtualChannelWrite([IntPtr] $vcHandle, [Byte[]] $buffer, [UInt32] $bufferSize, [ref] $bytesWritten) {
+        return [WFApi]::WFVirtualChannelWrite(
+            $vcHandle, $buffer, $bufferSize, $bytesWritten
+        )
+    }
+
+    static [Boolean] VirtualChannelQuery([IntPtr] $vcHandle, [ref] $buffer, [ref] $bufferSize) {
+        return [WFApi]::WFVirtualChannelQuery(
+            $vcHandle,
+            [WF_VIRTUAL_CLASS]::WFVirtualClientData,
+            $buffer,
+            $bufferSize
+        )
+    }
+}
+'@
+
+# Horizon
+Invoke-Expression @'
+class VDPApiWrapper : ApiWrapper {
+    static [Boolean] QuerySessionInformation([ref] $pSessionInfo, [ref] $ByteCount) {
+        return [VDPApi]::VDP_QuerySessionInformation(
+            [VDPApi]::VDP_CURRENT_SERVER_HANDLE,
+            [VDPApi]::VDP_CURRENT_SESSION,
+            [VDP_INFO_CLASS]::VDPSessionId,
+            $pSessionInfo,
+            $ByteCount
+        )
+    }
+
+    static [IntPtr] VirtualChannelOpen([string] $name) {
+        return [VDPApi]::VDP_VirtualChannelOpen(
+            [VDPApi]::VDP_CURRENT_SERVER_HANDLE,
+            [VDPApi]::VDP_CURRENT_SESSION,
+            $name
+        )
+    }
+
+    static [Boolean] VirtualChannelClose([IntPtr] $vcHandle) {
+        return [VDPApi]::VDP_VirtualChannelClose($vcHandle)
+    }
+
+    static [Boolean] VirtualChannelRead([IntPtr] $vcHandle, [UInt32] $timeout, [Byte[]] $buffer, [UInt32] $bufferSize, [ref] $bytesRead) {
+        return [VDPApi]::VDP_VirtualChannelRead(
+            $vcHandle, $timeout, $buffer, $bufferSize, $bytesRead
+        )
+    }
+
+    static [Boolean] VirtualChannelWrite([IntPtr] $vcHandle, [Byte[]] $buffer, [UInt32] $bufferSize, [ref] $bytesWritten) {
+        return [VDPApi]::VDP_VirtualChannelWrite(
+            $vcHandle, $buffer, $bufferSize, $bytesWritten
+        )
+    }
+
+    static [Boolean] VirtualChannelQuery([IntPtr] $vcHandle, [ref] $buffer, [ref] $bufferSize) {
+        return [VDPApi]::VDP_VirtualChannelQuery(
+            $vcHandle,
+            [VDP_VIRTUAL_CLASS]::VDPVirtualFileHandle,
+            $buffer,
+            $bufferSize
+        )
+    }
+}
+'@
+
+# RDP
+Invoke-Expression @'
+class WTSApiWrapper : ApiWrapper {
+    static [Boolean] QuerySessionInformation([ref] $pSessionInfo, [ref] $ByteCount) {
+        return [WTSApi]::WTSQuerySessionInformation(
+            [WTSApi]::WTS_CURRENT_SERVER_HANDLE,
+            [WTSApi]::WTS_CURRENT_SESSION,
+            [WTS_INFO_CLASS]::WTSSessionId,
+            $pSessionInfo,
+            $ByteCount
+        )
+    }
+
+    static [IntPtr] VirtualChannelOpen([string] $name) {
+        return [WTSApi]::WTSVirtualChannelOpen(
+            [WTSApi]::WTS_CURRENT_SERVER_HANDLE,
+            [WTSApi]::WTS_CURRENT_SESSION,
+            $name
+        )
+    }
+
+    static [Boolean] VirtualChannelClose([IntPtr] $vcHandle) {
+        return [WTSApi]::WTSVirtualChannelClose($vcHandle)
+    }
+
+    static [Boolean] VirtualChannelRead([IntPtr] $vcHandle, [UInt32] $timeout, [Byte[]] $buffer, [UInt32] $bufferSize, [ref] $bytesRead) {
+        return [WTSApi]::WTSVirtualChannelRead(
+            $vcHandle, $timeout, $buffer, $bufferSize, $bytesRead
+        )
+    }
+
+    static [Boolean] VirtualChannelWrite([IntPtr] $vcHandle, [Byte[]] $buffer, [UInt32] $bufferSize, [ref] $bytesWritten) {
+        return [WTSApi]::WTSVirtualChannelWrite(
+            $vcHandle, $buffer, $bufferSize, $bytesWritten
+        )
+    }
+
+    static [Boolean] VirtualChannelQuery([IntPtr] $vcHandle, [ref] $buffer, [ref] $bufferSize) {
+        return [WTSApi]::WTSVirtualChannelQuery(
+            $vcHandle,
+            [WTS_VIRTUAL_CLASS]::WTSVirtualFileHandle,
+            $buffer,
+            $bufferSize
+        )
+    }
+}
+'@
+
+### Soxy
+
+# Add structures defined in soxy to access them in PowerShell
 $cp = [CodeDom.Compiler.CompilerParameters]::new()
 $cp.CompilerOptions = "/unsafe"
 Add-Type -CompilerParameters $cp -TypeDefinition @"
@@ -231,6 +567,62 @@ function Convert-BytesToStruct {
     }
 }
 
+function Open-Backend {
+    [OutputType([Type])]
+
+    # We need to guess which backend is in use. For this, we call
+    # QuerySessionInformation until the right one is found
+    $pSessionInfo = ""
+    [UInt32] $ByteCount = 0
+
+    # This function will print errors when trying backends for which the DLLs
+    # are not present. To hide errors from the user, disable messages
+    # temporarily
+    $SavedErrorActionPreference = $ErrorActionPreference
+
+    Write-Verbose("Trying to detect Citrix backend...")
+    $ErrorActionPreference = "SilentlyContinue"
+    $ret = [WFApiWrapper]::QuerySessionInformation([ref] $pSessionInfo, [ref] $ByteCount)
+    $ErrorActionPreference = $SavedErrorActionPreference
+    if ($ret -eq 0) {
+        $error = [ComponentModel.Win32Exception][Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        Write-Error("QuerySessionInformation failed with error {0}: {1}." -f $error.NativeErrorCode, $error.Message)
+        Cleanup-Exit
+    } elseif ($pSessionInfo) {
+        Write-Host("Detected Citrix session.")
+        return [WFApiWrapper]
+    }
+
+    Write-Verbose("Trying to detect Horizon backend...")
+    $ErrorActionPreference = "SilentlyContinue"
+    $ret = [VDPApiWrapper]::QuerySessionInformation([ref] $pSessionInfo, [ref] $ByteCount)
+    $ErrorActionPreference = $SavedErrorActionPreference
+    if ($ret -eq 0) {
+        $error = [ComponentModel.Win32Exception][Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        Write-Error("QuerySessionInformation failed with error {0}: {1}." -f $error.NativeErrorCode, $error.Message)
+        Cleanup-Exit
+    } elseif ($pSessionInfo) {
+        Write-Host("Detected Horizon session.")
+        return [VDPApiWrapper]
+    }
+
+    Write-Verbose("Trying to detect RDP backend...")
+    $ErrorActionPreference = "SilentlyContinue"
+    $ret = [WTSApiWrapper]::QuerySessionInformation([ref] $pSessionInfo, [ref] $ByteCount)
+    $ErrorActionPreference = $SavedErrorActionPreference
+    if ($ret -eq 0) {
+        $error = [ComponentModel.Win32Exception][Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        Write-Error("QuerySessionInformation failed with error {0}: {1}." -f $error.NativeErrorCode, $error.Message)
+        Cleanup-Exit
+    } elseif ($pSessionInfo) {
+        Write-Host("Detected RDP session.")
+        return [WTSApiWrapper]
+    }
+
+    Write-Error("This program must be run from within a Citrix, Horizon or RDP session.")
+    Cleanup-Exit
+}
+
 function Open-VirtualChannel {
     [OutputType([IntPtr])]
     Param (
@@ -242,14 +634,10 @@ function Open-VirtualChannel {
         return [IntPtr]::Zero
     }
 
-    $channel = [WFApi]::WFVirtualChannelOpen(
-        [WFApi]::WF_CURRENT_SERVER_HANDLE,
-        [WFApi]::WF_CURRENT_SESSION,
-        $name
-    )
+    $channel = $api::VirtualChannelOpen($name)
     if ($channel -eq 0) {
         $error = [ComponentModel.Win32Exception][Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        Write-Error("WFVirtualChannelOpen failed for channel {0} with error {1}: {2}." -f $name, $error.NativeErrorCode, $error.Message)
+        Write-Error("VirtualChannelOpen failed for channel {0} with error {1}: {2}." -f $name, $error.NativeErrorCode, $error.Message)
     } else {
         Write-Host("Successfully opened virtual channel {0}." -f $name)
     }
@@ -262,10 +650,10 @@ function Close-VirtualChannel {
         [Parameter(Mandatory=$true)] [IntPtr] $vcHandle
     )
 
-    $ret = [WFApi]::WFVirtualChannelClose($vcHandle)
+    $ret = $api::VirtualChannelClose($vcHandle)
     if ($ret -eq 0) {
         $error = [ComponentModel.Win32Exception][Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        Write-Error("WFVirtualChannelClose failed for channel {0} with error {1}: {2}." -f $VC_NAME, $error.NativeErrorCode, $error.Message)
+        Write-Error("VirtualChannelClose failed for channel {0} with error {1}: {2}." -f $VC_NAME, $error.NativeErrorCode, $error.Message)
     } else {
         Write-Host("Successfully closed virtual channel {0}." -f $VC_NAME)
     }
@@ -280,17 +668,12 @@ function Read-VirtualChannelQuery {
         [Parameter(Mandatory=$true)] [ref] $outLen
     )
 
-    $ret = [WFApi]::WFVirtualChannelQuery(
-        $vcHandle,
-        [WF_VIRTUAL_CLASS]::WFVirtualClientData,
-        $outData,
-        $outLen
-    )
+    $ret = $api::VirtualChannelQuery($vcHandle, $outData, $outLen)
     if ($ret -eq 0) {
         $error = [ComponentModel.Win32Exception][Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        Write-Error("WFVirtualChannelQuery failed with error {0}: {1}." -f $error.NativeErrorCode, $error.Message)
+        Write-Error("VirtualChannelQuery failed with error {0}: {1}." -f $error.NativeErrorCode, $error.Message)
         if ($error.NativeErrorCode -eq 1) {
-            Write-Warning("This error typically occurs when the client did not properly connect to the virtual channel. Make sure ICAC2.DLL was properly loaded by Citrix when you opened the VDA session.")
+            Write-Warning("This error typically occurs when the client did not properly connect to the virtual channel. Make sure soxy was properly loaded by your client when you opened the session.")
         }
     } else {
         Write-Verbose("Queried {0} bytes from channel {1}." -f $outLen.Value, $VC_NAME)
@@ -308,19 +691,19 @@ function Read-Chunk {
     )
 
     if ($SOXY_CHUNK_MAX_LEN -gt $outPayload.Length) {
-        Write-Warning("Potential buffer overflow in WFVirtualChannelRead for channel {0}: buffer of size {1} is shorter than {2}." -f $VC_NAME, $outPayload.Length, $SOXY_CHUNK_MAX_LEN)
+        Write-Warning("Potential buffer overflow in VirtualChannelRead for channel {0}: buffer of size {1} is shorter than {2}." -f $VC_NAME, $outPayload.Length, $SOXY_CHUNK_MAX_LEN)
     }
 
     # Read data into local variable
     $chunkBuf = [Byte[]]::new($SOXY_CHUNK_MAX_LEN)
     [UInt32] $chunkLen = 0
 
-    $ret = [WFApi]::WFVirtualChannelRead(
+    $ret = $api::VirtualChannelRead(
         $vcHandle, $VC_TIMEOUT_MILLISECONDS, $chunkBuf, $SOXY_CHUNK_MAX_LEN, [ref] $chunkLen
     )
     if ($ret -eq 0) {
         $error = [ComponentModel.Win32Exception][Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        Write-Error("WFVirtualChannelRead failed with error {0}: {1}." -f $error.NativeErrorCode, $error.Message)
+        Write-Error("VirtualChannelRead failed with error {0}: {1}." -f $error.NativeErrorCode, $error.Message)
         return 0
     }
 
@@ -331,7 +714,7 @@ function Read-Chunk {
 
     # Check payload has (at least) the expected size
     if (($header.PayloadLen + $headerSize) -gt $chunkLen) {
-        Write-Error("Not enough data read in WFVirtualChannelRead: got {0}, expected {1}." -f $chunkLen, $header.PayloadLen + $headerSize)
+        Write-Error("Not enough data read in VirtualChannelRead: got {0}, expected {1}." -f $chunkLen, $header.PayloadLen + $headerSize)
         return 0
     }
 
@@ -343,27 +726,12 @@ function Read-Chunk {
     return 1
 }
 
+### Initialization
+
+# Auto-detect running backend
+[Type] $script:api = Open-Backend
+
 ### Virtual channel creation
-
-# Check whether we are running in an ICA session
-$pSessionInfo = "";
-[UInt32] $ByteCount = 0;
-
-$ret = [WFApi]::WFQuerySessionInformation(
-    [WFApi]::WF_CURRENT_SERVER_HANDLE,
-    [WFApi]::WF_CURRENT_SESSION,
-    [WF_INFO_CLASS]::WFSessionId,
-    [ref] $pSessionInfo,
-    [ref] $ByteCount
-)
-if ($ret -eq 0) {
-    $error = [ComponentModel.Win32Exception][Runtime.InteropServices.Marshal]::GetLastWin32Error()
-    Write-Error("WFQuerySessionInformation failed with error {0}: {1}." -f $error.NativeErrorCode, $error.Message)
-    Cleanup-Exit
-} elseif (!$pSessionInfo) {
-    Write-Error("This program must be run from within an ICA session.")
-    Cleanup-Exit
-}
 
 # Open virtual channel
 $channel = Open-VirtualChannel $VC_NAME
@@ -373,9 +741,8 @@ if ($channel -eq 0) {
 }
 
 # Query virtual channel information to ensure the client is connected
-$queryBuf = [Byte[]]::new(64)
+$queryBuf = [IntPtr]::Zero
 [UInt32] $queryLen = 0
-
 if (!(Read-VirtualChannelQuery $channel ([ref] $queryBuf) ([ref] $queryLen))) {
     Cleanup-Exit
 }
@@ -434,7 +801,7 @@ Write-Host("Waiting for file transfer...")
 
 # Read the file data and write chunks to file
 [UInt64] $totalFileSize = 0
-$isDone = $false;
+$isDone = $false
 while (!$isDone) {
     if (!(Read-Chunk $channel ([ref] $header) $payloadBuf ([ref] $payloadLen))) {
         Cleanup-Exit
@@ -454,7 +821,7 @@ while (!$isDone) {
         }
         ID_END {
             # We reached the end of the file
-            $isDone = $true;
+            $isDone = $true
             Break
         }
         Default {
