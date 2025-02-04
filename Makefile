@@ -1,8 +1,8 @@
 RELEASE_DIR:=release
 DEBUG_DIR:=debug
 
-#BACKEND_WINDOWS32_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo -Ctarget-feature=+crt-static
-BACKEND_WINDOWS64_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo -Ctarget-feature=+crt-static
+#BACKEND_WINDOWS32_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo -Ctarget-feature=+crt-static -Zlocation-detail=none
+BACKEND_WINDOWS64_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo -Ctarget-feature=+crt-static -Zlocation-detail=none
 #BACKEND_WINDOWS32_BUILD_FLAGS:=-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort
 BACKEND_WINDOWS64_BUILD_FLAGS:=-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort
 

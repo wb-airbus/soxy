@@ -35,6 +35,7 @@ debug = false
 strip = true
 lto = true
 panic = "abort"
+codegen-units = 1
 
 [features]
 log = [ "common/log", "dep:log" ]
