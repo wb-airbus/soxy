@@ -9,7 +9,7 @@ const ID_SIZE: u8 = 0x5;
 const ID_STOR: u8 = 0x6;
 
 #[derive(Debug)]
-pub(crate) enum DataCommand {
+pub enum DataCommand {
     Cwd(String),
     Dele(String),
     List(String),
@@ -105,7 +105,7 @@ const ID_DELETE_OK: u8 = 0x3;
 const ID_KO: u8 = 0x4;
 
 #[derive(Debug)]
-pub(crate) enum DataReply {
+pub enum DataReply {
     DataTransferOk,
     CwdOk,
     SizeOk(u64),

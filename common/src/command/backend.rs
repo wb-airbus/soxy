@@ -32,13 +32,13 @@ impl service::Backend for Server {
 
             let mut stdin = child
                 .stdin
-                .ok_or(io::Error::new(io::ErrorKind::InvalidInput, "no stdin"))?;
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no stdin"))?;
             let mut stdout = child
                 .stdout
-                .ok_or(io::Error::new(io::ErrorKind::InvalidInput, "no stdout"))?;
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no stdout"))?;
             let mut stderr = child
                 .stderr
-                .ok_or(io::Error::new(io::ErrorKind::InvalidInput, "no stderr"))?;
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "no stderr"))?;
 
             let (mut rdp_stream_read, mut rdp_stream_write_out) = rdp_stream.split();
             let mut rdp_stream_write_err = rdp_stream_write_out.clone();

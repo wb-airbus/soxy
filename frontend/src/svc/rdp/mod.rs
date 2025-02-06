@@ -110,7 +110,7 @@ impl RdpSvc {
         &self,
         init_handle: headers::LPVOID,
         open_handle: u32,
-        data: Vec<u8>,
+        mut data: Vec<u8>,
     ) -> Result<(), Error> {
         match WRITE_ACK.read().unwrap().as_ref() {
             None => Err(Error::NotReady),
@@ -139,7 +139,7 @@ impl RdpSvc {
                         unsafe {
                             write(
                                 open_handle,
-                                data.as_ptr() as *mut ffi::c_void,
+                                data.as_mut_ptr().cast(),
                                 len,
                                 counter as *mut ffi::c_void,
                             )
@@ -154,7 +154,7 @@ impl RdpSvc {
                             write(
                                 init_handle,
                                 open_handle,
-                                data.as_ptr() as *mut ffi::c_void,
+                                data.as_mut_ptr().cast(),
                                 len,
                                 counter as *mut ffi::c_void,
                             )
@@ -477,7 +477,7 @@ pub unsafe extern "C" fn VirtualChannelEntryEx(
     }
 }
 
-pub(crate) struct Svc {
+pub struct Svc {
     init_handle: headers::LPVOID,
     open_handle: Option<u32>,
     rsvc: RdpSvc,
@@ -507,13 +507,12 @@ impl super::SvcImplementation for Svc {
     }
 
     fn write(&self, data: Vec<u8>) -> Result<(), super::Error> {
-        match self.open_handle {
-            None => Err(super::Error::Rdp(Error::Disconnected)),
-            Some(open_handle) => self
-                .rsvc
-                .write(self.init_handle, open_handle, data)
-                .map_err(super::Error::Rdp),
-        }
+        self.open_handle
+            .map_or(Err(super::Error::Rdp(Error::Disconnected)), |open_handle| {
+                self.rsvc
+                    .write(self.init_handle, open_handle, data)
+                    .map_err(super::Error::Rdp)
+            })
     }
 
     fn close(&mut self) -> Result<(), super::Error> {

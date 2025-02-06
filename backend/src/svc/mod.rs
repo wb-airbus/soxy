@@ -4,7 +4,7 @@ use windows_sys as ws;
 mod high;
 mod low;
 
-pub(crate) enum Error {
+pub enum Error {
     LibraryNotFound,
     LibraryLoading(libloading::Error),
     WsaStartupFailed(i32),
@@ -69,7 +69,7 @@ enum Instance {
     Windows,
 }
 
-pub(crate) struct SymbolNames {
+pub struct SymbolNames {
     open: &'static str,
     read: &'static str,
     write: &'static str,
@@ -101,7 +101,7 @@ impl From<Instance> for SymbolNames {
     }
 }
 
-pub(crate) struct Implementation {
+pub struct Implementation {
     instance: Instance,
     lib: libloading::Library,
 }
@@ -169,7 +169,7 @@ type VirtualChannelQuery = unsafe extern "system" fn(
     pbytesreturned: *mut os::raw::c_ulong,
 ) -> ws::Win32::Foundation::BOOL;
 
-pub(crate) enum Svc<'a> {
+pub enum Svc<'a> {
     High { svc: high::Svc<'a> },
     Low { svc: low::Svc<'a> },
 }
@@ -206,7 +206,7 @@ impl<'a> Svc<'a> {
     }
 }
 
-pub(crate) enum Handle<'a> {
+pub enum Handle<'a> {
     High { handle: high::Handle<'a> },
     Low { handle: low::Handle },
 }
@@ -239,7 +239,7 @@ impl Handler for Handle<'_> {
     }
 }
 
-pub(crate) trait Handler {
+pub trait Handler {
     fn read(&self, data: &mut [u8]) -> Result<usize, Error>;
     fn write(&self, data: &[u8]) -> Result<usize, Error>;
 }

@@ -6,7 +6,7 @@ const TO_SVC_CHANNEL_SIZE: usize = 256;
 const FRONTEND_CHANNEL_SIZE: usize = 1;
 
 #[derive(Clone)]
-pub(crate) struct Control {
+pub struct Control {
     state: sync::Arc<sync::RwLock<svc::State>>,
     frontend_input: crossbeam_channel::Receiver<api::ChunkControl>,
     frontend_output: crossbeam_channel::Sender<api::ChunkControl>,

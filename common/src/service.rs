@@ -184,14 +184,14 @@ impl Channel {
                                 }
                             }
                             api::ChunkType::End => {
-                                if let Some(client) = self
+                                let value = self
                                     .clients
                                     .write()
                                     .map_err(|e| {
                                         io::Error::new(io::ErrorKind::BrokenPipe, e.to_string())
                                     })?
-                                    .remove(&client_id)
-                                {
+                                    .remove(&client_id);
+                                if let Some(client) = value {
                                     if client.send(chunk).is_err() {
                                         crate::warn!(
                                             "error sending to disconnected client {client_id:x}"
@@ -333,7 +333,7 @@ impl<'a> RdpStreamControl<'a> {
             .map_err(|e| io::Error::new(io::ErrorKind::BrokenPipe, e.to_string()))
     }
 
-    fn disconnected(&mut self) {
+    fn disconnected(&self) {
         self.0.write().unwrap().disconnected();
     }
 
@@ -413,7 +413,7 @@ pub(crate) struct RdpReader<'a> {
 }
 
 impl<'a> RdpReader<'a> {
-    fn new(
+    const fn new(
         control: RdpStreamControl<'a>,
         from_rdp: crossbeam_channel::Receiver<api::Chunk>,
     ) -> Self {
@@ -484,7 +484,7 @@ pub(crate) struct RdpWriter<'a> {
 }
 
 impl<'a> RdpWriter<'a> {
-    fn new(control: RdpStreamControl<'a>) -> Self {
+    const fn new(control: RdpStreamControl<'a>) -> Self {
         Self {
             control,
             buffer: [0u8; api::Chunk::max_payload_length()],

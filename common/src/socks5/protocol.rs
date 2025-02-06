@@ -1,12 +1,12 @@
 use std::{io, net};
 
-pub(crate) const VERSION: u8 = 0x05;
-pub(crate) const AUTHENTICATION_NONE: u8 = 0x00;
+pub const VERSION: u8 = 0x05;
+pub const AUTHENTICATION_NONE: u8 = 0x00;
 
 const ID_CMD_CONNECT: u8 = 0x01;
 const ID_CMD_BIND: u8 = 0x02;
 
-pub(crate) enum Error {
+pub enum Error {
     Io(io::Error),
     UnsupportedVersion(u8),
     UnsupportedCommand(u8),
@@ -20,7 +20,7 @@ impl From<io::Error> for Error {
 }
 
 #[derive(Debug)]
-pub(crate) enum Command {
+pub enum Command {
     Connect(String),
     Bind,
 }
@@ -168,7 +168,7 @@ const ID_RESP_CONNECTION_REFUSED: u8 = 0x03;
 const ID_RESP_BIND_FAILED: u8 = 0x04;
 
 #[derive(Debug)]
-pub(crate) enum Response {
+pub enum Response {
     Ok(Vec<u8>),
     NetworkUnreachable,
     HostUnreachable,
@@ -187,7 +187,7 @@ const RSP_CONNECTION_REFUSED: u8 = 0x05;
 //const RSP_ADDRESS_TYPE_NOT_SUPPORTED: u8 = 0x08;
 
 impl Response {
-    pub(crate) fn is_ok(&self) -> bool {
+    pub const fn is_ok(&self) -> bool {
         matches!(self, Self::Ok(_))
     }
 

@@ -14,7 +14,7 @@ pub struct Server {
 }
 
 impl Server {
-    fn accept(&self, stream: net::TcpStream) -> Client {
+    const fn accept(&self, stream: net::TcpStream) -> Client {
         Client::new(stream, self.server_ip)
     }
 }
@@ -92,23 +92,23 @@ impl Command {
         let command = command.to_uppercase();
 
         let command = match command.as_str() {
-            "CDUP" => Command::Cdup,
-            "CWD" => Command::Cwd(args),
-            "DELE" => Command::Dele(args),
-            "EPSV" => Command::Epsv,
-            "FEAT" => Command::Feat,
-            "LIST" => Command::List,
-            "NLST" => Command::Nlst,
-            "OPTS" => Command::Opts,
-            "PASS" => Command::Pass,
-            "PASV" => Command::Pasv,
-            "PWD" => Command::Pwd,
-            "QUIT" => Command::Quit,
-            "RETR" => Command::Retr(args),
-            "SIZE" => Command::Size(args),
-            "STOR" => Command::Stor(args),
-            "TYPE" => Command::Type,
-            "USER" => Command::User,
+            "CDUP" => Self::Cdup,
+            "CWD" => Self::Cwd(args),
+            "DELE" => Self::Dele(args),
+            "EPSV" => Self::Epsv,
+            "FEAT" => Self::Feat,
+            "LIST" => Self::List,
+            "NLST" => Self::Nlst,
+            "OPTS" => Self::Opts,
+            "PASS" => Self::Pass,
+            "PASV" => Self::Pasv,
+            "PWD" => Self::Pwd,
+            "QUIT" => Self::Quit,
+            "RETR" => Self::Retr(args),
+            "SIZE" => Self::Size(args),
+            "STOR" => Self::Stor(args),
+            "TYPE" => Self::Type,
+            "USER" => Self::User,
             _ => return Ok(None),
         };
 
@@ -122,7 +122,7 @@ struct Client {
 }
 
 impl Client {
-    fn new(stream: net::TcpStream, server_ip: net::IpAddr) -> Self {
+    const fn new(stream: net::TcpStream, server_ip: net::IpAddr) -> Self {
         Self { stream, server_ip }
     }
 
@@ -353,7 +353,7 @@ impl Client {
     }
 
     fn data_loop<'a>(
-        data_server: &mut net::TcpListener,
+        data_server: &net::TcpListener,
         from_control: &crossbeam_channel::Receiver<protocol::DataCommand>,
         to_control: &crossbeam_channel::Sender<protocol::DataReply>,
         to_client: &crossbeam_channel::Sender<Vec<String>>,
@@ -424,7 +424,7 @@ impl Client {
         scope: &'a thread::Scope<'a, '_>,
         channel: &'a service::Channel,
     ) -> Result<(), io::Error> {
-        let mut data_server = net::TcpListener::bind((self.server_ip, 0))?;
+        let data_server = net::TcpListener::bind((self.server_ip, 0))?;
         let data_port = data_server.local_addr().unwrap().port();
 
         let (control_to_data_send, control_to_data_receive) = crossbeam_channel::bounded(1);
@@ -437,8 +437,7 @@ impl Client {
                 "{SERVICE_KIND} {SERVICE} control {}",
                 self.stream
                     .peer_addr()
-                    .map(|a| a.to_string())
-                    .unwrap_or("<unknown>".into())
+                    .map_or_else(|_| "<unknown>".into(), |a| a.to_string())
             ))
             .spawn_scoped(scope, move || {
                 let mut lstream = io::BufWriter::new(lstream);
@@ -460,12 +459,11 @@ impl Client {
                 "{SERVICE_KIND} {SERVICE} data {}",
                 self.stream
                     .peer_addr()
-                    .map(|a| a.to_string())
-                    .unwrap_or("<unknown>".into())
+                    .map_or_else(|_| "<unknown>".into(), |a| a.to_string())
             ))
             .spawn_scoped(scope, move || {
                 if let Err(e) = Self::data_loop(
-                    &mut data_server,
+                    &data_server,
                     &control_to_data_receive,
                     &data_to_control_send,
                     &lto_control_send,

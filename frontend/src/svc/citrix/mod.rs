@@ -78,10 +78,7 @@ impl Handle {
     }
 }
 
-pub(crate) fn DriverOpen(
-    vd: &mut headers::VD,
-    vd_open: &mut headers::VDOPEN,
-) -> Result<(), ffi::c_int> {
+pub fn DriverOpen(vd: &mut headers::VD, vd_open: &mut headers::VDOPEN) -> Result<(), ffi::c_int> {
     let mut handle = HANDLE.write().unwrap();
 
     if handle.is_some() {
@@ -134,21 +131,21 @@ pub(crate) fn DriverOpen(
         return Err(headers::CLIENT_ERROR_BUFFER_TOO_SMALL);
     }
 
-    match unsafe { vdwh.__bindgen_anon_2.pQueueVirtualWriteProc.as_ref() } {
-        None => Err(headers::CLIENT_ERROR_NULL_MEM_POINTER),
-        Some(queue_virtual_write) => {
+    unsafe { vdwh.__bindgen_anon_2.pQueueVirtualWriteProc.as_ref() }.map_or(
+        Err(headers::CLIENT_ERROR_NULL_MEM_POINTER),
+        |queue_virtual_write| {
             let _ = handle.replace(Handle::new(
                 vdwh.pWdData.cast(),
                 wdovc.Channel,
                 *queue_virtual_write,
             ));
             Ok(())
-        }
-    }
+        },
+    )
 }
 
 #[allow(clippy::unnecessary_wraps)]
-pub(crate) fn DriverClose(
+pub fn DriverClose(
     _vd: &mut headers::VD,
     _dll_close: &mut headers::DLLCLOSE,
 ) -> Result<(), ffi::c_int> {
@@ -156,10 +153,7 @@ pub(crate) fn DriverClose(
     Ok(())
 }
 
-pub(crate) fn DriverInfo(
-    vd: &mut headers::VD,
-    dll_info: &mut headers::DLLINFO,
-) -> Result<(), ffi::c_int> {
+pub fn DriverInfo(vd: &headers::VD, dll_info: &mut headers::DLLINFO) -> Result<(), ffi::c_int> {
     let byte_count = u16::try_from(mem::size_of::<headers::VD_C2H>()).expect("value too large");
 
     if dll_info.ByteCount < byte_count {
@@ -207,7 +201,7 @@ pub(crate) fn DriverInfo(
     }
 }
 
-pub(crate) fn DriverPoll(
+pub fn DriverPoll(
     _vd: &mut headers::VD,
     _dll_poll: &mut headers::DLLPOLL,
 ) -> Result<(), ffi::c_int> {
@@ -221,7 +215,7 @@ pub(crate) fn DriverPoll(
         .write()
         .unwrap()
         .take()
-        .or(handle.write_queue_receive.try_recv().ok());
+        .or_else(|| handle.write_queue_receive.try_recv().ok());
 
     loop {
         match next {
@@ -264,7 +258,7 @@ pub(crate) fn DriverPoll(
     }
 }
 
-pub(crate) fn DriverQueryInformation(
+pub fn DriverQueryInformation(
     _vd: &mut headers::VD,
     _vd_query_info: &mut headers::VDQUERYINFORMATION,
 ) -> Result<(), ffi::c_int> {
@@ -272,7 +266,7 @@ pub(crate) fn DriverQueryInformation(
 }
 
 #[allow(clippy::unnecessary_wraps)]
-pub(crate) fn DriverSetInformation(
+pub fn DriverSetInformation(
     _vd: &mut headers::VD,
     _vd_set_info: &mut headers::VDSETINFORMATION,
 ) -> Result<(), ffi::c_int> {
@@ -280,7 +274,7 @@ pub(crate) fn DriverSetInformation(
 }
 
 /*
-pub(crate) fn DriverGetLastError(
+pub fn DriverGetLastError(
     _vd: &mut headers::VD,
     _vd_last_error: &mut headers::VDLASTERROR,
 ) -> Result<(), ffi::c_int> {
@@ -320,7 +314,7 @@ extern "C" fn ICADataArrival(
 }
 
 #[derive(Default)]
-pub(crate) struct Svc {}
+pub struct Svc {}
 
 unsafe impl Sync for Svc {}
 unsafe impl Send for Svc {}
@@ -336,13 +330,13 @@ impl super::SvcImplementation for Svc {
     }
 
     fn write(&self, data: Vec<u8>) -> Result<(), super::Error> {
-        match HANDLE.read().unwrap().as_ref() {
-            None => Err(super::Error::Citrix(Error::Disconnected)),
-            Some(handle) => {
+        HANDLE.read().unwrap().as_ref().map_or(
+            Err(super::Error::Citrix(Error::Disconnected)),
+            |handle| {
                 handle.queue(data);
                 Ok(())
-            }
-        }
+            },
+        )
     }
 
     fn close(&mut self) -> Result<(), super::Error> {

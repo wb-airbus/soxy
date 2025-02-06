@@ -13,7 +13,7 @@ pub struct Server {
 }
 
 impl Server {
-    fn accept(stream: net::TcpStream) -> Client {
+    const fn accept(stream: net::TcpStream) -> Client {
         Client { stream }
     }
 }
@@ -64,7 +64,7 @@ impl Client {
 
             let cline = line
                 .strip_suffix("\n")
-                .ok_or(io::Error::new(io::ErrorKind::BrokenPipe, "interrupted"))?;
+                .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "interrupted"))?;
 
             let cline = if cline.ends_with('\r') {
                 cline.strip_suffix('\r').unwrap()

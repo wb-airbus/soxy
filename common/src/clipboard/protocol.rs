@@ -3,7 +3,7 @@ use std::io;
 const ID_READ: u8 = 0x0;
 const ID_WRITE: u8 = 0x1;
 
-pub(crate) enum Command {
+pub enum Command {
     Read,
     Write(String),
 }
@@ -67,7 +67,7 @@ const ID_CLIPBOARD: u8 = 0x0;
 const ID_FAILED: u8 = 0x1;
 const ID_WRITE_DONE: u8 = 0x2;
 
-pub(crate) enum Response {
+pub enum Response {
     Clipboard(String),
     Failed,
     WriteDone,

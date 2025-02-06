@@ -55,7 +55,7 @@ pub struct Server {
 }
 
 impl Server {
-    fn accept(&self, stream: net::TcpStream) -> Client {
+    const fn accept(&self, stream: net::TcpStream) -> Client {
         Client::new(stream, self.server_ip)
     }
 }
@@ -93,7 +93,7 @@ struct Client {
 }
 
 impl Client {
-    fn new(stream: net::TcpStream, _server_ip: net::IpAddr) -> Self {
+    const fn new(stream: net::TcpStream, _server_ip: net::IpAddr) -> Self {
         Self { stream } //, server_ip }
     }
 

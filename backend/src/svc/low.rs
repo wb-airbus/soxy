@@ -1,7 +1,7 @@
 use std::{cell, io, os, ptr};
 use windows_sys as ws;
 
-pub(crate) struct Svc<'a> {
+pub struct Svc<'a> {
     open: libloading::Symbol<'a, super::VirtualChannelOpen>,
     query: libloading::Symbol<'a, super::VirtualChannelQuery>,
 }
@@ -122,7 +122,7 @@ impl<'a> Svc<'a> {
     }
 }
 
-pub(crate) struct Handle {
+pub struct Handle {
     filehandle: ws::Win32::Foundation::HANDLE,
     read_overlapped: cell::RefCell<ws::Win32::System::IO::OVERLAPPED>,
     write_overlapped: cell::RefCell<ws::Win32::System::IO::OVERLAPPED>,

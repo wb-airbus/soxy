@@ -9,7 +9,7 @@ pub struct Server {
 }
 
 impl Server {
-    fn accept(stream: net::TcpStream) -> Client {
+    const fn accept(stream: net::TcpStream) -> Client {
         Client { stream }
     }
 }

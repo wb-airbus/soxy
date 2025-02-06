@@ -1,7 +1,7 @@
 use std::{io, os, ptr};
 use windows_sys as ws;
 
-pub(crate) struct Svc<'a> {
+pub struct Svc<'a> {
     open: libloading::Symbol<'a, super::VirtualChannelOpen>,
     query: libloading::Symbol<'a, super::VirtualChannelQuery>,
     read: libloading::Symbol<'a, super::VirtualChannelRead>,
@@ -62,7 +62,7 @@ impl<'a> Svc<'a> {
     }
 }
 
-pub(crate) struct Handle<'a> {
+pub struct Handle<'a> {
     read: libloading::Symbol<'a, super::VirtualChannelRead>,
     write: libloading::Symbol<'a, super::VirtualChannelWrite>,
     wtshandle: ws::Win32::Foundation::HANDLE,

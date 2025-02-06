@@ -286,7 +286,7 @@ unsafe extern "C" fn VdSetInformation(
     }
 }
 
-pub(crate) fn WdQueryInformation(
+pub fn WdQueryInformation(
     vd: &mut headers::VD,
     query_info: &mut headers::WDQUERYINFORMATION,
 ) -> Result<(), ffi::c_int> {
@@ -319,7 +319,7 @@ pub(crate) fn WdQueryInformation(
     }
 }
 
-pub(crate) fn WdSetInformation(
+pub fn WdSetInformation(
     vd: &mut headers::VD,
     set_info: &mut headers::WDSETINFORMATION,
 ) -> Result<(), ffi::c_int> {

@@ -13,13 +13,13 @@ pub enum State {
     Terminated,
 }
 
-pub(crate) enum Command {
+pub enum Command {
     Open,
     SendChunk(api::Chunk),
     Close,
 }
 
-pub(crate) enum Response {
+pub enum Response {
     ChangeState(State),
     ReceivedChunk(api::Chunk),
     WriteCancelled,
@@ -45,27 +45,27 @@ trait SvcImplementation {
     fn close(&mut self) -> Result<(), Error>;
 }
 
-pub(crate) enum Svc {
+pub enum Svc {
     Citrix(citrix::Svc),
     Rdp(rdp::Svc),
 }
 
 impl Svc {
-    pub(crate) fn open(&mut self) -> Result<(), Error> {
+    pub fn open(&mut self) -> Result<(), Error> {
         match self {
             Self::Citrix(svc) => svc.open(),
             Self::Rdp(svc) => svc.open(),
         }
     }
 
-    pub(crate) fn write(&self, data: Vec<u8>) -> Result<(), Error> {
+    pub fn write(&self, data: Vec<u8>) -> Result<(), Error> {
         match self {
             Self::Citrix(svc) => svc.write(data),
             Self::Rdp(svc) => svc.write(data),
         }
     }
 
-    pub(crate) fn close(&mut self) -> Result<(), Error> {
+    pub fn close(&mut self) -> Result<(), Error> {
         match self {
             Self::Citrix(svc) => svc.close(),
             Self::Rdp(svc) => svc.close(),
@@ -73,6 +73,6 @@ impl Svc {
     }
 }
 
-pub(crate) static SVC: sync::RwLock<Option<Svc>> = sync::RwLock::new(None);
+pub static SVC: sync::RwLock<Option<Svc>> = sync::RwLock::new(None);
 
 const MAX_CHUNKS_IN_FLIGHT: usize = 64;
