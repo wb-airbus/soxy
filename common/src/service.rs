@@ -1,4 +1,4 @@
-use crate::{api, clipboard, command, ftp, socks5, stage0};
+use crate::api;
 use std::{
     collections::{self, hash_map},
     io::{self, Write},
@@ -98,31 +98,9 @@ impl Channel {
 
                     thread::Builder::new()
                         .name(format!("{service_kind} {service} {client_id:x}"))
-                        .spawn_scoped(scope, move || match service {
-                            api::Service::Clipboard => {
-                                if let Err(e) = clipboard::backend::Server::accept(stream) {
-                                    crate::debug!("error: {e}");
-                                }
-                            }
-                            api::Service::Command => {
-                                if let Err(e) = command::backend::Server::accept(stream) {
-                                    crate::debug!("error: {e}");
-                                }
-                            }
-                            api::Service::Ftp => {
-                                if let Err(e) = ftp::backend::Server::accept(stream) {
-                                    crate::error!("error: {e}");
-                                }
-                            }
-                            api::Service::Socks5 => {
-                                if let Err(e) = socks5::backend::Server::accept(stream) {
-                                    crate::error!("error: {e}");
-                                }
-                            }
-                            api::Service::Stage0 => {
-                                if let Err(e) = stage0::backend::Server::accept(stream) {
-                                    crate::error!("error: {e}");
-                                }
+                        .spawn_scoped(scope, move || {
+                            if let Err(e) = service.accept(stream) {
+                                crate::debug!("error: {e}");
                             }
                         })
                         .unwrap();

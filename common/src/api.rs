@@ -1,3 +1,8 @@
+use crate::{
+    clipboard, command, ftp,
+    service::{self, Backend},
+    socks5, stage0,
+};
 use std::{borrow, fmt, io, sync};
 
 pub const CHUNK_LENGTH: usize = 1600; // this is the max value
@@ -30,6 +35,16 @@ impl Service {
 
     const fn as_bytes(self) -> &'static [u8] {
         self.value().as_bytes()
+    }
+
+    pub fn accept(&self, stream: service::RdpStream) -> Result<(), io::Error> {
+        match self {
+            Self::Clipboard => clipboard::backend::Server::accept(stream),
+            Self::Command => command::backend::Server::accept(stream),
+            Self::Ftp => ftp::backend::Server::accept(stream),
+            Self::Socks5 => socks5::backend::Server::accept(stream),
+            Self::Stage0 => stage0::backend::Server::accept(stream),
+        }
     }
 }
 
