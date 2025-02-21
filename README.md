@@ -3,7 +3,7 @@
 [![Clippy](https://github.com/airbus-seclab/soxy/actions/workflows/clippy.yml/badge.svg)](https://github.com/airbus-seclab/soxy/actions/workflows/clippy.yml)
 [![Build](https://github.com/airbus-seclab/soxy/actions/workflows/build.yml/badge.svg)](https://github.com/airbus-seclab/soxy/actions/workflows/build.yml)
 
-soxy is a modular tool to interact with several VDIs that operates over RDP,
+soxy is a modular tool to interact with several VDIs that operate over RDP,
 such as VMware Horizon, Citrix and native Windows RDP. It supports useful debug
 services (e.g. clipboard, console/shell, sharing, FTP server, SOCKS5 proxy).
 
@@ -38,8 +38,8 @@ On the client side, soxy works as a plugin on:
 - Citrix client on Linux, macOS and Windows.
 
 On the remote host, soxy can run as a standalone Windows executable or can be
-embedded in other applications as a DLL. In release mode, this part of soxy is
-to be as small as possible (<200KB). It is built without any logging related
+embedded in other applications as a DLL. In release mode, this part of soxy is kept as small as possible (<200KB).
+It is built without any logging related
 code (even log message strings are absent from the binary) and without symbols.
 
 ![](big_picture.png)
@@ -68,7 +68,7 @@ The soxy source code is split into four parts:
   local network, depending on the configuration) for each service;
 - **backend**: contains the code of the Windows executable
   (or DLL) to be launched (or loaded) on the remote Windows machine;
-- **standalone**: contains the code to produce an exectuable including both the
+- **standalone**: contains the code to produce an executable including both the
   `frontend` and the `backend` parts (with an emulated RDP channel) for testing
   implementations of services;
 - **common**: contains some code used by all other parts.
@@ -150,7 +150,7 @@ The output hierarchy of the created repositories is the following:
 
 #### On macOS
 
-Only the frontend can be build on macOS. Proceed as follows.
+Only the frontend can be built on macOS. Proceed as follows.
 
 For the debug version:
 
@@ -235,7 +235,7 @@ When you launch FreeRDP from the command line, you have to add the argument
   sdl-freerdp3 /dynamic-resolution /log-level:INFO /u:User /v:192.168.42.42 /vc:soxy
   ```
 
-For Remmina, edit your RDP connection, got to the "Advanced" tab and set the
+For Remmina, edit your RDP connection, go to the "Advanced" tab and set the
 "Static virtual channel" parameter to `soxy`.
 
 #### For Citrix Workspace App
@@ -303,7 +303,7 @@ services.
 
 ### Accessing Services
 
-As soon as you have your favorite client setup and the _backend_ code running,
+As soon as your favorite client is set up and the _backend_ code is running,
 you can start using soxy services from your client machine
 
 #### Remote Clipboard
@@ -343,7 +343,7 @@ such as `nc`, and use the available command:
 
 ### Citrix
 
-If you get an error like `failed to open channel handle: virtual channel open failed (last_error = 5)` that's means there are some restrictions on citrix host virtual channels (default behavior in last Citrix version).
+If you get an error like `failed to open channel handle: virtual channel open failed (last_error = 5)` it means there are restrictions on citrix host virtual channels (default behavior in last Citrix version).
 To fix this, if you have (local) administrator privileges, you can disable Citrix restrictions on virtual channels (which is not recommended):
 
 ```powershell
@@ -356,7 +356,7 @@ Or you can whitelist `SOXY` like this if you have (local) administrator privileg
 reg add HKLM\SOFTWARE\WOW6432Node\Policies\Citrix\VCPolicies /v VirtualChannelWhiteList /t REG_MULTI_SZ /d SOXY,C:\Users\<USER>\<PATH_TO_SOXY_EXE>
 ```
 
-Note that in both case, you have to reboot Citrix host after.
+Note that in both cases, you have to reboot the Citrix host afterward.
 
 ## 🚧 Contributing
 
@@ -391,5 +391,5 @@ Refer to `common/src/clipboard/` for examples.
 
 ## 🏢 License
 
-This project is licensed under the GPLv3 License. See the [LICENSE](LICENSE)
+This project is licensed under the GNU GPLv3 License. See the [LICENSE](LICENSE)
 file for details.
