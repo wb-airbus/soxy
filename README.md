@@ -53,6 +53,7 @@ code (even log message strings are absent from the binary) and without symbols.
   - [Frontend Installation](#-frontend-installation)
   - [Backend Installation](#-backend-installation)
 - [Usage](#-usage)
+- [Troubleshooting](#-troubleshooting)
 - [Contributing](#-contributing)
 - [License](#-license)
 
@@ -337,6 +338,25 @@ such as `nc`, and use the available command:
 
 - `cat xxxx`, `push xxxx`, `put xxxx`, `send xxxx`, `upload xxxx`: sends the
   content of the file at the provided path.
+
+## Troubleshooting
+
+### Citrix
+
+If you get an error like `failed to open channel handle: virtual channel open failed (last_error = 5)` that's means there are some restrictions on citrix host virtual channels (default behavior in last citrix version).
+To fix this, you can disable citrix restrictions on virtual channels (which is not recommended):
+
+```powershell
+reg add HKLM\SOFTWARE\WOW6432Node\Policies\Citrix\VCPolicies /v VirtualChannelWhiteList /t REG_MULTI_SZ /d =disabled=
+```
+
+Or you can whitelist `SOXY` like this:
+
+```powershell
+reg add HKLM\SOFTWARE\WOW6432Node\Policies\Citrix\VCPolicies /v VirtualChannelWhiteList /t REG_MULTI_SZ /d SOXY,C:\Users\<USER>\<PATH_TO_SOXY_EXE>
+```
+
+Note that in both case, you have to reboot citrix host after.
 
 ## 🚧 Contributing
 
