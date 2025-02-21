@@ -343,20 +343,20 @@ such as `nc`, and use the available command:
 
 ### Citrix
 
-If you get an error like `failed to open channel handle: virtual channel open failed (last_error = 5)` that's means there are some restrictions on citrix host virtual channels (default behavior in last citrix version).
-To fix this, you can disable citrix restrictions on virtual channels (which is not recommended):
+If you get an error like `failed to open channel handle: virtual channel open failed (last_error = 5)` that's means there are some restrictions on citrix host virtual channels (default behavior in last Citrix version).
+To fix this, if you have (local) administrator privileges, you can disable Citrix restrictions on virtual channels (which is not recommended):
 
 ```powershell
 reg add HKLM\SOFTWARE\WOW6432Node\Policies\Citrix\VCPolicies /v VirtualChannelWhiteList /t REG_MULTI_SZ /d =disabled=
 ```
 
-Or you can whitelist `SOXY` like this:
+Or you can whitelist `SOXY` like this if you have (local) administrator privileges:
 
 ```powershell
 reg add HKLM\SOFTWARE\WOW6432Node\Policies\Citrix\VCPolicies /v VirtualChannelWhiteList /t REG_MULTI_SZ /d SOXY,C:\Users\<USER>\<PATH_TO_SOXY_EXE>
 ```
 
-Note that in both case, you have to reboot citrix host after.
+Note that in both case, you have to reboot Citrix host after.
 
 ## 🚧 Contributing
 
