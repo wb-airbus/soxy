@@ -26,7 +26,7 @@ enum-glob-use = "allow"
 missing-errors-doc = "allow"
 
 [lib]
-crate-type = [ "cdylib", "rlib" ]
+crate-type = [ "cdylib", "lib" ]
 name = "soxy"
 
 [profile.release]
@@ -34,6 +34,7 @@ opt-level = 3
 debug = false
 strip = true
 lto = true
+codegen-units = 1
 
 [features]
 log = [ "common/log", "dep:log" ]

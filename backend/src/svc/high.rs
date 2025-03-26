@@ -33,7 +33,7 @@ impl<'a> Svc<'a> {
         };
 
         if wtshandle.is_null() {
-            let err = unsafe { ws::Win32::Foundation::GetLastError() };
+            let err = io::Error::last_os_error();
             return Err(super::Error::VirtualChannelOpenStaticChannelFailed(err));
         }
 
@@ -50,7 +50,7 @@ impl<'a> Svc<'a> {
         };
 
         if ret == ws::Win32::Foundation::FALSE {
-            let err = unsafe { ws::Win32::Foundation::GetLastError() };
+            let err = io::Error::last_os_error();
             common::warn!("virtual channel query failed (len = {len}, last error = {err})");
         }
 
@@ -95,7 +95,7 @@ impl super::Handler for Handle<'_> {
         };
 
         if ret == 0 {
-            let err = unsafe { ws::Win32::Foundation::GetLastError() };
+            let err = io::Error::last_os_error();
             Err(super::Error::VirtualChannelReadFailed(err))
         } else {
             Ok(usize::try_from(read)
@@ -112,7 +112,7 @@ impl super::Handler for Handle<'_> {
         let ret = unsafe { (self.write)(self.wtshandle, data.as_ptr(), to_write, &mut written) };
 
         if ret == 0 || written != to_write {
-            let err = unsafe { ws::Win32::Foundation::GetLastError() };
+            let err = io::Error::last_os_error();
             Err(super::Error::VirtualChannelWriteFailed(err))
         } else {
             Ok(usize::try_from(written)

@@ -125,7 +125,7 @@ impl Channel {
                 }
                 api::ChunkControl::Chunk(chunk) => match chunk.chunk_type() {
                     Err(_) => {
-                        crate::error!("discarding invalid chunk: {chunk}");
+                        crate::error!("discarding invalid chunk");
                     }
                     Ok(chunk_type) => {
                         let client_id = chunk.client_id();

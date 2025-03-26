@@ -29,6 +29,13 @@ must_use_candidate = "allow"
 enum-glob-use = "allow"
 missing-errors-doc = "allow"
 
+[[bin]]
+name = "soxy"
+
+[lib]
+crate-type = [ "cdylib", "lib" ]
+name = "soxy"
+
 [profile.release]
 opt-level = "z"
 debug = false
@@ -39,10 +46,3 @@ codegen-units = 1
 
 [features]
 log = [ "common/log", "dep:log" ]
-
-[lib]
-crate-type = [ "lib", "cdylib" ]
-name = "soxy"
-
-[[bin]]
-name = "soxy"

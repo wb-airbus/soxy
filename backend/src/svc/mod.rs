@@ -2,19 +2,24 @@ use std::{ffi, fmt, io, os};
 use windows_sys as ws;
 
 mod high;
+#[cfg(target_os = "windows")]
 mod low;
 
 pub enum Error {
     LibraryNotFound,
     LibraryLoading(libloading::Error),
+    #[cfg(target_os = "windows")]
     WsaStartupFailed(i32),
     Io(io::Error),
-    VirtualChannelOpenStaticChannelFailed(u32),
-    VirtualChannelReadFailed(u32),
-    VirtualChannelWriteFailed(u32),
-    VirtualChannelQueryFailed(u32),
-    DuplicateHandleFailed(u32),
-    CreateEventFailed(u32),
+    VirtualChannelOpenStaticChannelFailed(io::Error),
+    VirtualChannelReadFailed(io::Error),
+    VirtualChannelWriteFailed(io::Error),
+    #[cfg(target_os = "windows")]
+    VirtualChannelQueryFailed(io::Error),
+    #[cfg(target_os = "windows")]
+    DuplicateHandleFailed(io::Error),
+    #[cfg(target_os = "windows")]
+    CreateEventFailed(io::Error),
     InvalidChannelName,
 }
 
@@ -23,6 +28,7 @@ impl fmt::Display for Error {
         match self {
             Self::LibraryNotFound => write!(f, "library not found"),
             Self::LibraryLoading(e) => write!(f, "library loading error: {e}"),
+            #[cfg(target_os = "windows")]
             Self::WsaStartupFailed(e) => write!(f, "WSAStartup failed with error code {e}"),
             Self::Io(e) => write!(f, "I/O error: {e}"),
             Self::VirtualChannelOpenStaticChannelFailed(err) => {
@@ -34,12 +40,15 @@ impl fmt::Display for Error {
             Self::VirtualChannelWriteFailed(err) => {
                 write!(f, "virtual channel write failed (last error = {err})")
             }
+            #[cfg(target_os = "windows")]
             Self::VirtualChannelQueryFailed(err) => {
                 write!(f, "virtual channel query failed (last error = {err})")
             }
+            #[cfg(target_os = "windows")]
             Self::DuplicateHandleFailed(err) => {
                 write!(f, "duplicate handle failed (last error = {err})")
             }
+            #[cfg(target_os = "windows")]
             Self::CreateEventFailed(err) => {
                 write!(f, "create event failed (last error = {err})")
             }
@@ -66,6 +75,7 @@ impl From<io::Error> for Error {
 enum Instance {
     Citrix,
     Horizon,
+    #[cfg(target_os = "windows")]
     Windows,
 }
 
@@ -91,6 +101,7 @@ impl From<Instance> for SymbolNames {
                 write: "VDP_VirtualChannelWrite",
                 query: "VDP_VirtualChannelQuery",
             },
+            #[cfg(target_os = "windows")]
             Instance::Windows => Self {
                 open: "WTSVirtualChannelOpen",
                 read: "WTSVirtualChannelRead",
@@ -109,8 +120,12 @@ pub struct Implementation {
 impl Implementation {
     pub(crate) fn load() -> Result<Self, Error> {
         unsafe {
-            common::debug!("trying to load Citrix library");
-            if let Ok(lib) = libloading::Library::new("wfapi64.dll") {
+            let file = libloading::library_filename("wfapi64");
+            common::debug!(
+                "trying to load Citrix library from {}",
+                file.to_string_lossy()
+            );
+            if let Ok(lib) = libloading::Library::new(file) {
                 common::info!("Citrix library loaded");
                 return Ok(Self {
                     instance: Instance::Citrix,
@@ -118,8 +133,12 @@ impl Implementation {
                 });
             }
 
-            common::debug!("trying to load Horizon library");
-            if let Ok(lib) = libloading::Library::new("vdp_rdpvcbridge.dll") {
+            let file = libloading::library_filename("vdp_rdpvcbridge");
+            common::debug!(
+                "trying to load Horizon library from {}",
+                file.to_string_lossy()
+            );
+            if let Ok(lib) = libloading::Library::new(file) {
                 common::info!("Horizon library loaded");
                 return Ok(Self {
                     instance: Instance::Horizon,
@@ -127,13 +146,17 @@ impl Implementation {
                 });
             }
 
-            common::debug!("trying to load WTS library");
-            if let Ok(lib) = libloading::Library::new("wtsapi32.dll") {
-                common::info!("WTS library loaded");
-                return Ok(Self {
-                    instance: Instance::Windows,
-                    lib,
-                });
+            #[cfg(target_os = "windows")]
+            {
+                let file = libloading::library_filename("wtsapi32");
+                common::debug!("trying to load WTS library from {}", file.to_string_lossy());
+                if let Ok(lib) = libloading::Library::new(file) {
+                    common::info!("WTS library loaded");
+                    return Ok(Self {
+                        instance: Instance::Windows,
+                        lib,
+                    });
+                }
             }
 
             Err(Error::LibraryNotFound)
@@ -170,8 +193,13 @@ type VirtualChannelQuery = unsafe extern "system" fn(
 ) -> ws::Win32::Foundation::BOOL;
 
 pub enum Svc<'a> {
-    High { svc: high::Svc<'a> },
-    Low { svc: low::Svc<'a> },
+    High {
+        svc: high::Svc<'a>,
+    },
+    #[cfg(target_os = "windows")]
+    Low {
+        svc: low::Svc<'a>,
+    },
 }
 
 impl<'a> Svc<'a> {
@@ -186,6 +214,7 @@ impl<'a> Svc<'a> {
                 let svc = high::Svc::load(&implem.lib, &symbol_names)?;
                 Ok(Self::High { svc })
             }
+            #[cfg(target_os = "windows")]
             Instance::Windows => {
                 let svc = low::Svc::load(&implem.lib, &symbol_names)?;
                 Ok(Self::Low { svc })
@@ -201,14 +230,20 @@ impl<'a> Svc<'a> {
 
         match self {
             Self::High { svc } => Ok(Handle::from(svc.open(cname)?)),
+            #[cfg(target_os = "windows")]
             Self::Low { svc } => Ok(Handle::from(svc.open(cname)?)),
         }
     }
 }
 
 pub enum Handle<'a> {
-    High { handle: high::Handle<'a> },
-    Low { handle: low::Handle },
+    High {
+        handle: high::Handle<'a>,
+    },
+    #[cfg(target_os = "windows")]
+    Low {
+        handle: low::Handle,
+    },
 }
 
 impl<'a> From<high::Handle<'a>> for Handle<'a> {
@@ -217,6 +252,7 @@ impl<'a> From<high::Handle<'a>> for Handle<'a> {
     }
 }
 
+#[cfg(target_os = "windows")]
 impl From<low::Handle> for Handle<'_> {
     fn from(handle: low::Handle) -> Self {
         Self::Low { handle }
@@ -227,6 +263,7 @@ impl Handler for Handle<'_> {
     fn read(&self, data: &mut [u8]) -> Result<usize, Error> {
         match self {
             Self::High { handle } => handle.read(data),
+            #[cfg(target_os = "windows")]
             Self::Low { handle } => handle.read(data),
         }
     }
@@ -234,6 +271,7 @@ impl Handler for Handle<'_> {
     fn write(&self, data: &[u8]) -> Result<usize, Error> {
         match self {
             Self::High { handle } => handle.write(data),
+            #[cfg(target_os = "windows")]
             Self::Low { handle } => handle.write(data),
         }
     }

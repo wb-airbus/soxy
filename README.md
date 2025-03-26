@@ -38,7 +38,8 @@ On the client side, soxy works as a plugin on:
 - Citrix client on Linux, macOS and Windows.
 
 On the remote host, soxy can run as a standalone Windows executable or can be
-embedded in other applications as a DLL. In release mode, this part of soxy is kept as small as possible (<200KB).
+embedded in other applications as a DLL. In release mode, this part of soxy is
+kept as small as possible.
 It is built without any logging related
 code (even log message strings are absent from the binary) and without symbols.
 
@@ -108,10 +109,21 @@ The following elements are required to build them:
 - `make`;
 - `mingw-w64` package on Arch, Debian and Ubuntu, `mingw64-gcc` and
   `mingw32-gcc` on Fedora;
+- `clang`;
 - [rustup](https://rustup.rs/) installed (see next section).
 
 
 ##### Make Targets
+
+By default all supported platforms (except macOS ones) are enabled in
+the `Makefile`. It is possible to enable only the build of artifcats needed
+by editing the three following variables at the beginning of the `Makefile`.
+
+```Makefile
+TARGETS_FRONTEND:=i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
+TARGETS_BACKEND:=i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
+TARGETS_STANDALONE:=i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
+```
 
 The `Makefile` contains three main targets:
 
@@ -128,24 +140,36 @@ The output hierarchy of the created repositories is the following:
 
 ```
 ├── backend
-│   ├── win32
+│   ├── i686-pc-windows-gnu
 │   │   ├── soxy.dll
 │   │   └── soxy.exe
-│   └── win64
-│       ├── soxy.dll
-│       └── soxy.exe
+│   ├── i686-unknown-linux-gnu
+│   │   ├── libsoxy.so
+│   │   └── soxy
+│   ├── x86_64-pc-windows-gnu
+│   │   ├── soxy.dll
+│   │   └── soxy.exe
+│   └── x86_64-unknown-linux-gnu
+│       ├── libsoxy.so
+│       └── soxy
 ├── frontend
-│   ├── linux64
-│   │   └── libsoxy.so
-│   ├── win32
+│   ├── i686-pc-windows-gnu
 │   │   └── soxy.dll
-│   └── win64
-│       └── soxy.dll
+│   ├── i686-unknown-linux-gnu
+│   │   └── libsoxy.so
+│   ├── x86_64-pc-windows-gnu
+│   │   └── soxy.dll
+│   └── x86_64-unknown-linux-gnu
+│       └── libsoxy.so
 └── standalone
-    ├── linux64
+    ├── i686-pc-windows-gnu
+    │   └── soxy_standalone.exe
+    ├── i686-unknown-linux-gnu
     │   └── soxy_standalone
-    └── win64
-        └── soxy_standalone.exe
+    ├── x86_64-pc-windows-gnu
+    │   └── soxy_standalone.exe
+    └── x86_64-unknown-linux-gnu
+        └── soxy_standalone
 ```
 
 #### On macOS
@@ -182,7 +206,7 @@ Copy `libsoxy.dylib` to `/Applications/VMware Horizon Client.app/Contents/Librar
 Copy the frontend library into the VMware `rdpvcbridge` directory:
 
 ```bash
-sudo cp release/frontend/linux64/libsoxy.so /usr/lib/vmware/rdpvcbridge/
+sudo cp release/frontend/x86_64-unknown-linux-gnu/libsoxy.so /usr/lib/vmware/rdpvcbridge/
 ```
 
 **Note**: on recent versions of VMware Horizon client, the directory has moved
@@ -212,13 +236,13 @@ the library will not be found by FreeRDP/Remmina:
 
   ```bash
   sudo mkdir -p /usr/lib/x86_64-linux-gnu/freerdp2
-  sudo cp release/frontend/linux64/libsoxy.so /usr/lib/x86_64-linux-gnu/freerdp2/libsoxy-client.so
+  sudo cp release/frontend/x86_64-unknown-linux-gnu/libsoxy.so /usr/lib/x86_64-linux-gnu/freerdp2/libsoxy-client.so
   ```
 * for FreeRDP 3:
 
   ```bash
   sudo mkdir -p /usr/lib/freerdp3
-  sudo cp release/frontend/linux64/libsoxy.so /usr/lib/freerdp3/libsoxy-client.so
+  sudo cp release/frontend/x86_64-unknown-linux-gnu/libsoxy.so /usr/lib/freerdp3/libsoxy-client.so
   ```
 
 When you launch FreeRDP from the command line, you have to add the argument
@@ -256,9 +280,10 @@ First copy `libsoxy.so` to `/opt/Citrix/ICAClient/`, then modify
 
 ##### On Windows
 
-First copy the **win32** version of `soxy.dll` to `C:\Program Files
-(x86)\Citrix\ICA Client`, then register it for automatic loading by Citrix
-Workspace App; you need to run the command with administrator privileges:
+First copy the **32 bits version** of `soxy.dll` from `i686-pc-windows-gnu` to
+`C:\Program Files (x86)\Citrix\ICA Client`, then register it for automatic
+loading by Citrix Workspace App; you need to run the command with administrator
+privileges:
 
 ```bash
 regsvr32.exe soxy.dll
@@ -274,14 +299,15 @@ regsvr32.exe /u soxy.dll
 
 #### Using `soxy.exe`
 
-Copy `release/win64/soxy.exe` to the machine you are connected to and execute
-it.
+Copy `release/x86_64-pc-windows-gnu/soxy.exe` to the machine you are connected
+to and execute it.
 
 #### (Alternative) Using the DLL
 
-Copy `release/win64/soxy.dll` (or `release/win32/soxy.dll` depending on the
-Windows architecture) and _find your way to load the DLL_. For example, this can
-be done thanks to `rundll32.exe` present on Windows with the following command:
+Copy `release/x86_64-pc-windows-gnu/soxy.dll` (or `release/i686-pc-windows-gnu/soxy.dll`
+depending on the Windows architecture) and _find your way to load the DLL_.
+For example, this can be done thanks to `rundll32.exe` present on Windows
+with the following command:
 
 ```bash
 rundll32.exe soxy.dll,Main
@@ -343,8 +369,10 @@ such as `nc`, and use the available command:
 
 ### Citrix
 
-If you get an error like `failed to open channel handle: virtual channel open failed (last_error = 5)` it means there are restrictions on citrix host virtual channels (default behavior in last Citrix version).
-To fix this, if you have (local) administrator privileges, you can disable Citrix restrictions on virtual channels (which is not recommended):
+If you get an error like `failed to open channel handle: virtual channel open failed (last_error = 5)`
+it means there are restrictions on citrix host virtual channels (default behavior
+in last Citrix version). To fix this, if you have (local) administrator privileges,
+you can disable Citrix restrictions on virtual channels (which is not recommended):
 
 ```powershell
 reg add HKLM\SOFTWARE\WOW6432Node\Policies\Citrix\VCPolicies /v VirtualChannelWhiteList /t REG_MULTI_SZ /d =disabled=

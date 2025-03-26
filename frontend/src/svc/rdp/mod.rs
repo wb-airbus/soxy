@@ -120,7 +120,7 @@ impl RdpSvc {
                     .fetch_add(1, sync::atomic::Ordering::SeqCst);
 
                 #[cfg(not(target_os = "windows"))]
-                let len = u64::try_from(data.len()).map_err(|e| {
+                let len = headers::ULONG::try_from(data.len()).map_err(|e| {
                     common::error!("write error: data too large ({e})");
                     Error::VirtualChannel(0)
                 })?;
@@ -136,6 +136,8 @@ impl RdpSvc {
 
                         write_ack.can_send.acquire();
 
+                        common::trace!("write {len} bytes");
+
                         unsafe {
                             write(
                                 open_handle,
@@ -149,6 +151,8 @@ impl RdpSvc {
                         let write = write.as_ref().ok_or(Error::NotReady)?;
 
                         write_ack.can_send.acquire();
+
+                        common::trace!("write {len} bytes");
 
                         unsafe {
                             write(
@@ -403,7 +407,7 @@ fn generic_virtual_channel_entry(
     );
 
     #[cfg(not(target_os = "windows"))]
-    let version_requested = u64::from(headers::VIRTUAL_CHANNEL_VERSION_WIN2000);
+    let version_requested = headers::ULONG::from(headers::VIRTUAL_CHANNEL_VERSION_WIN2000);
     #[cfg(target_os = "windows")]
     let version_requested = headers::VIRTUAL_CHANNEL_VERSION_WIN2000;
 

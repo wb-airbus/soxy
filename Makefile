@@ -1,59 +1,81 @@
+TARGETS_FRONTEND:=i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
+TARGETS_BACKEND:=i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
+TARGETS_STANDALONE:=i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
+
 RELEASE_DIR:=release
 DEBUG_DIR:=debug
 
-#BACKEND_WINDOWS32_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo -Ctarget-feature=+crt-static -Zlocation-detail=none
-BACKEND_WINDOWS64_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo -Ctarget-feature=+crt-static -Zlocation-detail=none
-#BACKEND_WINDOWS32_BUILD_FLAGS:=-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort
-BACKEND_WINDOWS64_BUILD_FLAGS:=-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort
+BACKEND_RELEASE_LIB_RUST_FLAGS=--remap-path-prefix ${HOME}=/foo -Zlocation-detail=none
+
+BACKEND_RELEASE_BIN_RUST_FLAGS=--remap-path-prefix ${HOME}=/foo -Zlocation-detail=none
+BACKEND_RELEASE_BIN_WINDOWS_RUST_FLAGS=$(BACKEND_RELEASE_BIN_RUST_FLAGS) -Ctarget-feature=+crt-static
+
+BACKEND_BUILD_FLAGS=-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort
+
+SHELL:=bash
 
 .PHONY: setup
 setup:
-	rustup toolchain add stable nightly
-	rustup target add --toolchain nightly i686-pc-windows-gnu x86_64-pc-windows-gnu
-	rustup target add x86_64-unknown-linux-gnu i686-pc-windows-gnu x86_64-pc-windows-gnu
-	rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
+	echo $(TARGETS_FRONTEND) $(TARGETS_BACKEND) $(TARGETS_STANDALONE) | tr ' ' '\n' | sort -u | while read t ; do \
+		echo ; echo "# Installing toolchains and components for $$t" ; echo ; \
+		rustup target add --toolchain stable $$t ; \
+		rustup target add --toolchain nightly $$t ; \
+		rustup component add --toolchain nightly-$$t rust-src ; \
+	done
 
 .PHONY: release
 release: build-release
-	mkdir -p $(RELEASE_DIR)/frontend/win32
-	cp frontend/target/i686-pc-windows-gnu/release/*.dll $(RELEASE_DIR)/frontend/win32/
-	mkdir -p $(RELEASE_DIR)/frontend/win64
-	cp frontend/target/x86_64-pc-windows-gnu/release/*.dll $(RELEASE_DIR)/frontend/win64/
-	mkdir -p $(RELEASE_DIR)/frontend/linux64
-	cp frontend/target/x86_64-unknown-linux-gnu/release/lib*.so $(RELEASE_DIR)/frontend/linux64/
-#	mkdir -p $(RELEASE_DIR)/backend/win32
-#	cp backend/target/i686-pc-windows-gnu/release/*.dll $(RELEASE_DIR)/backend/win32/
-#	cp backend/target/i686-pc-windows-gnu/release/*.exe $(RELEASE_DIR)/backend/win32/
-	mkdir -p $(RELEASE_DIR)/backend/win64
-	cp backend/target/x86_64-pc-windows-gnu/release/*.dll $(RELEASE_DIR)/backend/win64/
-	cp backend/target/x86_64-pc-windows-gnu/release/*.exe $(RELEASE_DIR)/backend/win64/
-	mkdir -p $(RELEASE_DIR)/standalone/win32
-	cp standalone/target/i686-pc-windows-gnu/release/*standalone.exe $(RELEASE_DIR)/standalone/win32/
-	mkdir -p $(RELEASE_DIR)/standalone/win64
-	cp standalone/target/x86_64-pc-windows-gnu/release/*standalone.exe $(RELEASE_DIR)/standalone/win64/
-	mkdir -p $(RELEASE_DIR)/standalone/linux64
-	cp standalone/target/x86_64-unknown-linux-gnu/release/*standalone $(RELEASE_DIR)/standalone/linux64/
+	@for t in $(TARGETS_FRONTEND) ; do \
+		for f in frontend/target/$$t/release/*soxy{,.dll,.exe,.so} ; do \
+			if [[ -f "$$f" ]] ; then \
+				mkdir -p $(RELEASE_DIR)/frontend/$$t && \
+				cp "$$f" $(RELEASE_DIR)/frontend/$$t/ ; \
+			fi ; \
+		done ; \
+	done
+	@for t in $(TARGETS_BACKEND) ; do \
+		for f in backend/target/$$t/release/*soxy{,.dll,.exe,.so} ; do \
+			if [[ -f "$$f" ]] ; then \
+				mkdir -p $(RELEASE_DIR)/backend/$$t && \
+				cp "$$f" $(RELEASE_DIR)/backend/$$t/ ; \
+			fi ; \
+		done ; \
+	done
+	@for t in $(TARGETS_STANDALONE) ; do \
+		for f in standalone/target/$$t/release/*standalone{,.exe} ; do \
+			if [[ -f "$$f" ]] ; then \
+				mkdir -p $(RELEASE_DIR)/standalone/$$t && \
+				cp "$$f" $(RELEASE_DIR)/standalone/$$t/ ; \
+			fi ; \
+		done ; \
+	done
 
 .PHONY: debug
 debug: build-debug
-	mkdir -p $(DEBUG_DIR)/frontend/win32
-	cp frontend/target/i686-pc-windows-gnu/debug/*.dll $(DEBUG_DIR)/frontend/win32/
-	mkdir -p $(DEBUG_DIR)/frontend/win64
-	cp frontend/target/x86_64-pc-windows-gnu/debug/*.dll $(DEBUG_DIR)/frontend/win64/
-	mkdir -p $(DEBUG_DIR)/frontend/linux64
-	cp frontend/target/x86_64-unknown-linux-gnu/debug/lib*.so $(DEBUG_DIR)/frontend/linux64/
-	mkdir -p $(DEBUG_DIR)/backend/win32
-	cp backend/target/i686-pc-windows-gnu/debug/*.dll $(DEBUG_DIR)/backend/win32/
-	cp backend/target/i686-pc-windows-gnu/debug/*.exe $(DEBUG_DIR)/backend/win32/
-	mkdir -p $(DEBUG_DIR)/backend/win64
-	cp backend/target/x86_64-pc-windows-gnu/debug/*.dll $(DEBUG_DIR)/backend/win64/
-	cp backend/target/x86_64-pc-windows-gnu/debug/*.exe $(DEBUG_DIR)/backend/win64/
-	mkdir -p $(DEBUG_DIR)/standalone/win32
-	cp standalone/target/i686-pc-windows-gnu/debug/*standalone.exe $(DEBUG_DIR)/standalone/win32/
-	mkdir -p $(DEBUG_DIR)/standalone/win64
-	cp standalone/target/x86_64-pc-windows-gnu/debug/*standalone.exe $(DEBUG_DIR)/standalone/win64/
-	mkdir -p $(DEBUG_DIR)/standalone/linux64
-	cp standalone/target/x86_64-unknown-linux-gnu/debug/*standalone $(DEBUG_DIR)/standalone/linux64/
+	@for t in $(TARGETS_FRONTEND) ; do \
+		for f in frontend/target/$$t/debug/*soxy{,.dll,.exe,.so} ; do \
+			if [[ -f "$$f" ]] ; then \
+				mkdir -p $(DEBUG_DIR)/frontend/$$t && \
+				cp "$$f" $(DEBUG_DIR)/frontend/$$t/ ; \
+			fi ; \
+		done ; \
+	done
+	@for t in $(TARGETS_BACKEND) ; do \
+		for f in backend/target/$$t/debug/*soxy{,.dll,.exe,.so} ; do \
+			if [[ -f "$$f" ]] ; then \
+				mkdir -p $(DEBUG_DIR)/backend/$$t && \
+				cp "$$f" $(DEBUG_DIR)/backend/$$t/ ; \
+			fi ; \
+		done ; \
+	done
+	@for t in $(TARGETS_STANDALONE) ; do \
+		for f in standalone/target/$$t/debug/*standalone{,.exe} ; do \
+			if [[ -f "$$f" ]] ; then \
+				mkdir -p $(DEBUG_DIR)/standalone/$$t && \
+				cp "$$f" $(DEBUG_DIR)/standalone/$$t/ ; \
+			fi ; \
+		done ; \
+	done
 
 .PHONY: distclean
 distclean: clean
@@ -63,49 +85,60 @@ distclean: clean
 
 .PHONY: build-release
 build-release:
-	cd frontend ; cargo build --release --features log --target i686-pc-windows-gnu
-	cd frontend ; cargo build --release --features log --target x86_64-pc-windows-gnu
-	cd frontend ; cargo build --release --features log --target x86_64-unknown-linux-gnu
-#	cd backend ; RUSTFLAGS="$(BACKEND_WINDOWS32_RUST_FLAGS)" cargo +nightly build --release --target i686-pc-windows-gnu $(BACKEND_WINDOWS32_BUILD_FLAGS)
-	cd backend ; RUSTFLAGS="$(BACKEND_WINDOWS64_RUST_FLAGS)" cargo +nightly build --release --target x86_64-pc-windows-gnu $(BACKEND_WINDOWS64_BUILD_FLAGS)
-	cd standalone ; cargo build --release --features log --target i686-pc-windows-gnu
-	cd standalone ; cargo build --release --features log --target x86_64-pc-windows-gnu
-	cd standalone ; cargo build --release --features log --target x86_64-unknown-linux-gnu
+	@for t in $(TARGETS_FRONTEND) ; do \
+		echo ; echo "# Building release frontend for $$t" ; echo ; \
+		cd frontend ; cargo build --release --features log --target $$t ; cd .. ; \
+	done
+	@for t in $(TARGETS_BACKEND) ; do \
+		echo ; echo "# Building release backend library for $$t" ; echo ; \
+		cd backend ; RUSTFLAGS="$(BACKEND_RELEASE_LIB_RUST_FLAGS)" cargo +nightly build --lib --release --target $$t $(BACKEND_BUILD_FLAGS) ; cd .. ; \
+		echo ; echo "# Building release backend binary for $$t" ; echo ; \
+		FLAGS="$(BACKEND_RELEASE_BIN_RUST_FLAGS)" ; \
+		if echo $$t | grep -q windows ; then \
+			FLAGS="$(BACKEND_RELEASE_BIN_WINDOWS_RUST_FLAGS)" ; \
+                fi ; \
+		cd backend ; RUSTFLAGS="$$FLAGS" cargo +nightly build --bins --release --target $$t $(BACKEND_BUILD_FLAGS) ; cd .. ; \
+	done
+	@for t in $(TARGETS_STANDALONE) ; do \
+		echo ; echo "# Building release standalone for $$t" ; echo ; \
+		cd standalone ; cargo build --release --features log --target $$t ; cd .. ; \
+	done
 
 .PHONY: build-debug
 build-debug:
-	cd frontend ; cargo build --features log --target i686-pc-windows-gnu
-	cd frontend ; cargo build --features log --target x86_64-pc-windows-gnu
-	cd frontend ; cargo build --features log --target x86_64-unknown-linux-gnu
-	cd backend ; cargo build --features log --target i686-pc-windows-gnu
-	cd backend ; cargo build --features log --target x86_64-pc-windows-gnu
-	cd standalone ; cargo build --features log --target i686-pc-windows-gnu
-	cd standalone ; cargo build --features log --target x86_64-pc-windows-gnu
-	cd standalone ; cargo build --features log --target x86_64-unknown-linux-gnu
+	@for t in $(TARGETS_FRONTEND) ; do \
+		echo ; echo "# Building debug frontend for $$t" ; echo ; \
+		cd frontend ; cargo build --features log --target $$t ; cd .. ; \
+	done
+	@for t in $(TARGETS_BACKEND) ; do \
+		echo ; echo "# Building debug backend library for $$t" ; echo ; \
+		cd backend ; cargo build --lib --features log --target $$t ; cd .. ; \
+		echo ; echo "# Building debug backend binary for $$t" ; echo ; \
+		cd backend ; cargo build --bins --features log --target $$t ; cd .. ; \
+	done
+	@for t in $(TARGETS_STANDALONE) ; do \
+		echo ; echo "# Building debug standalone for $$t" ; echo ; \
+		cd standalone ; cargo build --features log --target $$t ; cd .. ; \
+	done
 
 #############
 
 .PHONY: clippy
 clippy:
-	cd common ; cargo $@
-	cd frontend ; cargo $@ --target i686-pc-windows-gnu
-	cd frontend ; cargo $@ --target x86_64-pc-windows-gnu
-	cd frontend ; cargo $@ --target x86_64-unknown-linux-gnu
-	cd backend ; cargo $@ --target i686-pc-windows-gnu
-	cd backend ; cargo $@ --target x86_64-pc-windows-gnu
-	cd backend ; cargo $@ --target x86_64-unknown-linux-gnu
-	cd standalone ; cargo $@ --target x86_64-pc-windows-gnu
-	cd standalone ; cargo $@ --target x86_64-unknown-linux-gnu
+	@for t in i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu ; do \
+		for c in common frontend backend standalone ; do \
+			echo ; echo "# Clippy on $$c for $$t" ; echo ; \
+			cd $$c ; cargo $@ --target $$t ; cd .. ; \
+		done ; \
+	done
 
 .PHONY: cargo-fmt
 cargo-fmt:
-	cd common ; $@
-	cd frontend ; $@
-	cd backend ; $@
-	cd standalone ; $@
+	for c in common frontend backend standalone ; do \
+		cd $$c ; $@ ; cd .. ; \
+	done
 
 %:
-	cd common ; cargo $@
-	cd frontend ; cargo $@
-	cd backend ; cargo $@
-	cd standalone ; cargo $@
+	for c in common frontend backend standalone ; do \
+		cd $$c ; cargo $@ ; cd .. ; \
+	done

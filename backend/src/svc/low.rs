@@ -29,7 +29,7 @@ impl<'a> Svc<'a> {
         };
 
         if wtshandle.is_null() {
-            let err = unsafe { ws::Win32::Foundation::GetLastError() };
+            let err = io::Error::last_os_error();
             return Err(super::Error::VirtualChannelOpenStaticChannelFailed(err));
         }
 
@@ -47,11 +47,11 @@ impl<'a> Svc<'a> {
             )
         };
         if ret == ws::Win32::Foundation::FALSE {
-            let err = unsafe { ws::Win32::Foundation::GetLastError() };
+            let err = io::Error::last_os_error();
             return Err(super::Error::VirtualChannelQueryFailed(err));
         }
         if filehandleptr.is_null() {
-            let err = unsafe { ws::Win32::Foundation::GetLastError() };
+            let err = io::Error::last_os_error();
             return Err(super::Error::VirtualChannelQueryFailed(err));
         }
 
@@ -74,7 +74,7 @@ impl<'a> Svc<'a> {
             )
         };
         if ret == ws::Win32::Foundation::FALSE {
-            let err = unsafe { ws::Win32::Foundation::GetLastError() };
+            let err = io::Error::last_os_error();
             return Err(super::Error::DuplicateHandleFailed(err));
         }
         common::trace!("duplicated filehandle = {dfilehandle:?}");
@@ -89,7 +89,7 @@ impl<'a> Svc<'a> {
         };
 
         if h_event.is_null() {
-            let err = unsafe { ws::Win32::Foundation::GetLastError() };
+            let err = io::Error::last_os_error();
             return Err(super::Error::CreateEventFailed(err));
         }
 
@@ -128,13 +128,6 @@ pub struct Handle {
     write_overlapped: cell::RefCell<ws::Win32::System::IO::OVERLAPPED>,
 }
 
-// Because of the *mut content (handle but also in OVERLAPPED
-// structure) Rust does not derive Send and Sync. Since we know how
-// those data will be used (especially in terms of concurrency) we
-// assume to unsafely implement Send and Sync.
-unsafe impl Send for Handle {}
-unsafe impl Sync for Handle {}
-
 impl super::Handler for Handle {
     fn read(&self, data: &mut [u8]) -> Result<usize, super::Error> {
         let to_read = os::raw::c_uint::try_from(data.len())
@@ -167,12 +160,13 @@ impl super::Handler for Handle {
                     )
                 };
                 if ret == ws::Win32::Foundation::FALSE {
-                    let err = unsafe { ws::Win32::Foundation::GetLastError() };
+                    let err = io::Error::last_os_error();
                     Err(super::Error::VirtualChannelReadFailed(err))
                 } else {
                     Ok(read as usize)
                 }
             } else {
+                let err = io::Error::last_os_error();
                 Err(super::Error::VirtualChannelReadFailed(err))
             }
         } else {
@@ -187,6 +181,8 @@ impl super::Handler for Handle {
         let mut written = 0;
 
         let mut overlapped = self.write_overlapped.borrow_mut();
+
+        common::trace!("write {to_write} bytes");
 
         let ret = unsafe {
             ws::Win32::Storage::FileSystem::WriteFile(
@@ -211,12 +207,13 @@ impl super::Handler for Handle {
                     )
                 };
                 if ret == ws::Win32::Foundation::FALSE {
-                    let err = unsafe { ws::Win32::Foundation::GetLastError() };
+                    let err = io::Error::last_os_error();
                     Err(super::Error::VirtualChannelReadFailed(err))
                 } else {
                     Ok(written as usize)
                 }
             } else {
+                let err = io::Error::last_os_error();
                 Err(super::Error::VirtualChannelWriteFailed(err))
             }
         } else {
@@ -224,3 +221,10 @@ impl super::Handler for Handle {
         }
     }
 }
+
+// Because of the *mut content (handle but also in OVERLAPPED
+// structure) Rust does not derive Send and Sync. Since we know how
+// those data will be used (especially in terms of concurrency) we
+// assume to unsafely implement Send and Sync.
+unsafe impl Send for Handle {}
+unsafe impl Sync for Handle {}

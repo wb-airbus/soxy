@@ -1,5 +1,5 @@
 use common::{self, api, service};
-use std::{ffi, fmt, ptr, sync, thread, time};
+use std::{ffi, fmt, sync, thread, time};
 use svc::Handler;
 use windows_sys as ws;
 
@@ -143,21 +143,24 @@ fn frontend_to_backend<'a>(
 
 #[allow(clippy::too_many_lines)]
 fn main_res() -> Result<(), Error> {
-    common::debug!("calling WSAStartup");
+    #[cfg(target_os = "windows")]
+    {
+        common::debug!("calling WSAStartup");
 
-    let mut data = ws::Win32::Networking::WinSock::WSADATA {
-        wVersion: 0,
-        wHighVersion: 0,
-        iMaxSockets: 0,
-        iMaxUdpDg: 0,
-        lpVendorInfo: ptr::null_mut(),
-        szDescription: [0i8; 257],
-        szSystemStatus: [0i8; 129],
-    };
+        let mut data = ws::Win32::Networking::WinSock::WSADATA {
+            wVersion: 0,
+            wHighVersion: 0,
+            iMaxSockets: 0,
+            iMaxUdpDg: 0,
+            lpVendorInfo: std::ptr::null_mut(),
+            szDescription: [0i8; 257],
+            szSystemStatus: [0i8; 129],
+        };
 
-    let ret = unsafe { ws::Win32::Networking::WinSock::WSAStartup(0x0202, &mut data) };
-    if ret != 0 {
-        return Err(Error::Svc(svc::Error::WsaStartupFailed(ret)));
+        let ret = unsafe { ws::Win32::Networking::WinSock::WSAStartup(0x0202, &mut data) };
+        if ret != 0 {
+            return Err(Error::Svc(svc::Error::WsaStartupFailed(ret)));
+        }
     }
 
     let lib = svc::Implementation::load()?;

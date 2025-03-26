@@ -25,7 +25,7 @@ impl service::Backend for Server {
                         match clipboard_win::get_clipboard_string() {
                             Err(e) => {
                                 crate::error!("failed to get clipboard: {e}");
-                                protocol::Response::Failed.send(&mut stream)?
+                                protocol::Response::Failed.send(&mut stream)?;
                             }
                             Ok(s) => protocol::Response::Clipboard(s).send(&mut stream)?,
                         }
@@ -45,7 +45,7 @@ impl service::Backend for Server {
                         match clipboard_win::set_clipboard_string(&value) {
                             Err(e) => {
                                 crate::error!("failed to set clipboard: {e}");
-                                protocol::Response::Failed.send(&mut stream)?
+                                protocol::Response::Failed.send(&mut stream)?;
                             }
                             Ok(()) => protocol::Response::WriteDone.send(&mut stream)?,
                         }
