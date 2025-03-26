@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "backend"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "bindgen",
  "common",
@@ -92,7 +92,7 @@ dependencies = [
 
 [[package]]
 name = "common"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "clipboard-win",
  "crossbeam-channel",
