@@ -1,3 +1,3 @@
 fn main() {
-    soxy::main();
+    soxy::main(None);
 }

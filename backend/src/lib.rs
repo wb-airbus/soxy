@@ -209,8 +209,8 @@ fn main_res() -> Result<(), Error> {
     })
 }
 
-pub fn main() {
-    common::init_logs(false);
+pub fn main(level: Option<common::Level>) {
+    common::init_logs(false, level);
 
     common::debug!("starting up");
 
@@ -246,7 +246,7 @@ pub unsafe extern "system" fn DllMain(
         ws::Win32::System::SystemServices::DLL_PROCESS_ATTACH => unsafe {
             ws::Win32::System::LibraryLoader::DisableThreadLibraryCalls(dll_module);
             ws::Win32::System::Console::AllocConsole();
-            thread::spawn(main);
+            thread::spawn(|| main(None));
         },
         ws::Win32::System::SystemServices::DLL_PROCESS_DETACH => {}
         _ => (),

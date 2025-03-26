@@ -14,16 +14,37 @@ pub mod stage0;
 
 pub const VIRTUAL_CHANNEL_NAME: &ffi::CStr = c"SOXY";
 
+pub enum Level {
+    Info,
+    Debug,
+    Trace,
+}
+
 #[cfg(not(feature = "log"))]
-pub const fn init_logs(_with_file: bool) {}
+pub const fn init_logs(_with_file: bool, _level: Option<Level>) {}
 
 #[cfg(feature = "log")]
-pub fn init_logs(with_file: bool) {
+impl Into<simplelog::LevelFilter> for Level {
+    fn into(self) -> simplelog::LevelFilter {
+        match self {
+            Self::Info => simplelog::LevelFilter::Info,
+            Self::Debug => simplelog::LevelFilter::Debug,
+            Self::Trace => simplelog::LevelFilter::Trace,
+        }
+    }
+}
+
+#[cfg(feature = "log")]
+pub fn init_logs(with_file: bool, level: Option<Level>) {
     #[cfg(debug_assertions)]
-    let level_filter = simplelog::LevelFilter::Debug;
+    let mut level_filter = simplelog::LevelFilter::Debug;
 
     #[cfg(not(debug_assertions))]
-    let level_filter = simplelog::LevelFilter::Info;
+    let mut level_filter = simplelog::LevelFilter::Info;
+
+    if let Some(level) = level {
+        level_filter = level.into();
+    }
 
     let config = simplelog::ConfigBuilder::new()
         .set_level_padding(simplelog::LevelPadding::Right)

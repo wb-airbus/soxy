@@ -92,7 +92,7 @@ pub fn init(
     frontend_channel: service::Channel,
     backend_to_frontend: crossbeam_channel::Receiver<api::ChunkControl>,
 ) -> Result<(), Error> {
-    common::init_logs(true);
+    common::init_logs(true, None);
 
     common::debug!("initializing frontend");
 
