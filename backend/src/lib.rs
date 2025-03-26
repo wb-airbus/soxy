@@ -142,7 +142,7 @@ fn frontend_to_backend<'a>(
                                     read -= len;
                                     if read == 0 {
                                         break;
-                                   }
+                                    }
                                 }
                             }
                         }
@@ -274,15 +274,15 @@ pub fn main(level: Option<common::Level>) {
 
 // rundll32.exe soxy.dll,Main
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(non_snake_case, unused_variables)]
-pub extern "system" fn Main() {
+extern "system" fn Main() {
     loop {
         thread::sleep(time::Duration::from_secs(60));
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(non_snake_case, unused_variables, clippy::missing_safety_doc)]
 pub unsafe extern "system" fn DllMain(
     dll_module: ws::Win32::Foundation::HINSTANCE,

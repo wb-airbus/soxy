@@ -98,8 +98,8 @@ impl Default for VirtualDriver {
 
 static VD: sync::OnceLock<VirtualDriver> = sync::OnceLock::new();
 
-#[no_mangle]
-unsafe extern "C" fn Load(pLink: headers::PDLLLINK) -> ffi::c_int {
+#[unsafe(no_mangle)]
+extern "C" fn Load(pLink: headers::PDLLLINK) -> ffi::c_int {
     common::debug!("Load");
 
     crate::start();
@@ -110,7 +110,7 @@ unsafe extern "C" fn Load(pLink: headers::PDLLLINK) -> ffi::c_int {
     let svc = super::super::Svc::Citrix(svc);
     let _ = super::super::SVC.write().unwrap().replace(svc);
 
-    match pLink.as_mut() {
+    match unsafe { pLink.as_mut() } {
         None => {
             common::error!("pLink is null!");
             headers::CLIENT_ERROR
@@ -125,14 +125,14 @@ unsafe extern "C" fn Load(pLink: headers::PDLLLINK) -> ffi::c_int {
     }
 }
 
-unsafe extern "C" fn VdUnload(
+extern "C" fn VdUnload(
     _pVd: headers::PVD,
     pLink: headers::PDLLLINK,
     _puiSize: headers::PUINT16,
 ) -> ffi::c_int {
     common::debug!("VdUnload");
 
-    if let Some(pLink) = pLink.as_mut() {
+    if let Some(pLink) = unsafe { pLink.as_mut() } {
         pLink.ProcCount = 0;
         pLink.pProcedures = ptr::null_mut();
         pLink.pData = ptr::null_mut();
@@ -143,14 +143,14 @@ unsafe extern "C" fn VdUnload(
     headers::CLIENT_STATUS_SUCCESS
 }
 
-unsafe extern "C" fn VdOpen(
+extern "C" fn VdOpen(
     pVd: headers::PVD,
     pVdOpen: headers::PVDOPEN,
     puiSize: headers::PUINT16,
 ) -> ffi::c_int {
     common::debug!("VdOpen");
 
-    match (pVd.as_mut(), pVdOpen.as_mut(), puiSize.as_mut()) {
+    match unsafe { (pVd.as_mut(), pVdOpen.as_mut(), puiSize.as_mut()) } {
         (None, _, _) | (_, None, _) | (_, _, None) => headers::CLIENT_ERROR,
         (Some(pVd), Some(pVdOpen), Some(puiSize)) => {
             pVd.ChannelMask = 0;
@@ -172,14 +172,14 @@ unsafe extern "C" fn VdOpen(
     }
 }
 
-unsafe extern "C" fn VdClose(
+extern "C" fn VdClose(
     pVd: headers::PVD,
     pDllClose: headers::PDLLCLOSE,
     puiSize: headers::PUINT16,
 ) -> ffi::c_int {
     common::debug!("VdClose");
 
-    match (pVd.as_mut(), pDllClose.as_mut(), puiSize.as_mut()) {
+    match unsafe { (pVd.as_mut(), pDllClose.as_mut(), puiSize.as_mut()) } {
         (None, _, _) | (_, None, _) | (_, _, None) => headers::CLIENT_ERROR,
         (Some(pVd), Some(pDllClose), Some(puiSize)) => {
             if let Err(e) = super::DriverClose(pVd, pDllClose) {
@@ -194,14 +194,14 @@ unsafe extern "C" fn VdClose(
     }
 }
 
-unsafe extern "C" fn VdInfo(
+extern "C" fn VdInfo(
     pVd: headers::PVD,
     pDllInfo: headers::PDLLINFO,
     puiSize: headers::PUINT16,
 ) -> ffi::c_int {
     common::debug!("VdInfo");
 
-    match (pVd.as_mut(), pDllInfo.as_mut(), puiSize.as_mut()) {
+    match unsafe { (pVd.as_mut(), pDllInfo.as_mut(), puiSize.as_mut()) } {
         (None, _, _) | (_, None, _) | (_, _, None) => headers::CLIENT_ERROR,
         (Some(pVd), Some(pDllInfo), Some(puiSize)) => {
             if let Err(e) = super::DriverInfo(pVd, pDllInfo) {
@@ -218,14 +218,14 @@ unsafe extern "C" fn VdInfo(
     }
 }
 
-unsafe extern "C" fn VdPoll(
+extern "C" fn VdPoll(
     pVd: headers::PVD,
     pDllPoll: headers::PDLLPOLL,
     puiSize: headers::PUINT16,
 ) -> ffi::c_int {
     common::trace!("VdPoll");
 
-    match (pVd.as_mut(), pDllPoll.as_mut(), puiSize.as_mut()) {
+    match unsafe { (pVd.as_mut(), pDllPoll.as_mut(), puiSize.as_mut()) } {
         (None, _, _) | (_, None, _) | (_, _, None) => headers::CLIENT_ERROR,
         (Some(pVd), Some(pDllPoll), Some(puiSize)) => {
             if let Err(e) = super::DriverPoll(pVd, pDllPoll) {
@@ -240,14 +240,14 @@ unsafe extern "C" fn VdPoll(
     }
 }
 
-unsafe extern "C" fn VdQueryInformation(
+extern "C" fn VdQueryInformation(
     pVd: headers::PVD,
     pVdQueryInformation: headers::PVDQUERYINFORMATION,
     puiSize: headers::PUINT16,
 ) -> ffi::c_int {
     common::debug!("VdQueryInformation");
 
-    match (pVd.as_mut(), pVdQueryInformation.as_mut(), puiSize.as_mut()) {
+    match unsafe { (pVd.as_mut(), pVdQueryInformation.as_mut(), puiSize.as_mut()) } {
         (None, _, _) | (_, None, _) | (_, _, None) => headers::CLIENT_ERROR,
         (Some(pVd), Some(pVdQueryInformation), Some(puiSize)) => {
             if let Err(e) = super::DriverQueryInformation(pVd, pVdQueryInformation) {
@@ -263,14 +263,14 @@ unsafe extern "C" fn VdQueryInformation(
     }
 }
 
-unsafe extern "C" fn VdSetInformation(
+extern "C" fn VdSetInformation(
     pVd: headers::PVD,
     pVdSetInformation: headers::PVDSETINFORMATION,
     puiSize: headers::PUINT16,
 ) -> ffi::c_int {
     common::debug!("VdSetInformation");
 
-    match (pVd.as_mut(), pVdSetInformation.as_mut(), puiSize.as_mut()) {
+    match unsafe { (pVd.as_mut(), pVdSetInformation.as_mut(), puiSize.as_mut()) } {
         (None, _, _) | (_, None, _) | (_, _, None) => headers::CLIENT_ERROR,
         (Some(pVd), Some(pVdSetInformation), Some(_puiSize)) => {
             if let Err(e) = super::DriverSetInformation(pVd, pVdSetInformation) {
@@ -278,8 +278,10 @@ unsafe extern "C" fn VdSetInformation(
                 return e;
             }
 
-            *puiSize = u16::try_from(mem::size_of::<headers::VDSETINFORMATION>())
-                .expect("value too large");
+            unsafe {
+                *puiSize = u16::try_from(mem::size_of::<headers::VDSETINFORMATION>())
+                    .expect("value too large")
+            };
 
             headers::CLIENT_STATUS_SUCCESS
         }

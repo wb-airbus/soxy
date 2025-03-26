@@ -116,79 +116,81 @@ impl Channel {
         service_kind: api::ServiceKind,
         from_rdp: &crossbeam_channel::Receiver<api::ChunkControl>,
     ) -> Result<(), api::Error> {
-        thread::scope(|scope| loop {
-            let control_chunk = from_rdp.recv()?;
+        thread::scope(|scope| {
+            loop {
+                let control_chunk = from_rdp.recv()?;
 
-            match control_chunk {
-                api::ChunkControl::Shutdown => {
-                    self.shutdown();
-                }
-                api::ChunkControl::Chunk(chunk) => match chunk.chunk_type() {
-                    Err(_) => {
-                        crate::error!("discarding invalid chunk");
+                match control_chunk {
+                    api::ChunkControl::Shutdown => {
+                        self.shutdown();
                     }
-                    Ok(chunk_type) => {
-                        let client_id = chunk.client_id();
-                        let payload = chunk.payload();
+                    api::ChunkControl::Chunk(chunk) => match chunk.chunk_type() {
+                        Err(_) => {
+                            crate::error!("discarding invalid chunk");
+                        }
+                        Ok(chunk_type) => {
+                            let client_id = chunk.client_id();
+                            let payload = chunk.payload();
 
-                        match chunk_type {
-                            api::ChunkType::Start => match service_kind {
-                                api::ServiceKind::Frontend => {
-                                    unimplemented!("accept connections");
+                            match chunk_type {
+                                api::ChunkType::Start => match service_kind {
+                                    api::ServiceKind::Frontend => {
+                                        unimplemented!("accept connections");
+                                    }
+                                    api::ServiceKind::Backend => {
+                                        self.handle_backend_start(
+                                            service_kind,
+                                            client_id,
+                                            payload,
+                                            scope,
+                                        )?;
+                                    }
+                                },
+                                api::ChunkType::Data => {
+                                    if let Some(client) = self
+                                        .clients
+                                        .read()
+                                        .map_err(|e| {
+                                            io::Error::new(io::ErrorKind::BrokenPipe, e.to_string())
+                                        })?
+                                        .get(&client_id)
+                                    {
+                                        if client.send(chunk).is_err() {
+                                            crate::warn!(
+                                                "error sending to disconnected client {client_id:x}"
+                                            );
+                                        }
+                                    } else {
+                                        crate::debug!(
+                                            "discarding chunk for unknown client {client_id:x}"
+                                        );
+                                        let _ = self.send(api::Chunk::end(client_id));
+                                    }
                                 }
-                                api::ServiceKind::Backend => {
-                                    self.handle_backend_start(
-                                        service_kind,
-                                        client_id,
-                                        payload,
-                                        scope,
-                                    )?;
-                                }
-                            },
-                            api::ChunkType::Data => {
-                                if let Some(client) = self
-                                    .clients
-                                    .read()
-                                    .map_err(|e| {
-                                        io::Error::new(io::ErrorKind::BrokenPipe, e.to_string())
-                                    })?
-                                    .get(&client_id)
-                                {
-                                    if client.send(chunk).is_err() {
-                                        crate::warn!(
-                                            "error sending to disconnected client {client_id:x}"
+                                api::ChunkType::End => {
+                                    let value = self
+                                        .clients
+                                        .write()
+                                        .map_err(|e| {
+                                            io::Error::new(io::ErrorKind::BrokenPipe, e.to_string())
+                                        })?
+                                        .remove(&client_id);
+                                    if let Some(client) = value {
+                                        if client.send(chunk).is_err() {
+                                            crate::warn!(
+                                                "error sending to disconnected client {client_id:x}"
+                                            );
+                                        }
+                                    } else {
+                                        crate::debug!(
+                                            "discarding chunk for unknown client {client_id:x}"
                                         );
                                     }
-                                } else {
-                                    crate::debug!(
-                                        "discarding chunk for unknown client {client_id:x}"
-                                    );
-                                    let _ = self.send(api::Chunk::end(client_id));
-                                }
-                            }
-                            api::ChunkType::End => {
-                                let value = self
-                                    .clients
-                                    .write()
-                                    .map_err(|e| {
-                                        io::Error::new(io::ErrorKind::BrokenPipe, e.to_string())
-                                    })?
-                                    .remove(&client_id);
-                                if let Some(client) = value {
-                                    if client.send(chunk).is_err() {
-                                        crate::warn!(
-                                            "error sending to disconnected client {client_id:x}"
-                                        );
-                                    }
-                                } else {
-                                    crate::debug!(
-                                        "discarding chunk for unknown client {client_id:x}"
-                                    );
                                 }
                             }
                         }
-                    }
-                },
+                    },
+                }
             }
         })
     }

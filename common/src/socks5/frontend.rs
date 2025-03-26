@@ -69,20 +69,22 @@ impl service::Frontend for Server {
     }
 
     fn start(&mut self, channel: &service::Channel) -> Result<(), io::Error> {
-        thread::scope(|scope| loop {
-            let (client, client_addr) = self.server.accept()?;
+        thread::scope(|scope| {
+            loop {
+                let (client, client_addr) = self.server.accept()?;
 
-            crate::debug!("new client {client_addr}");
+                crate::debug!("new client {client_addr}");
 
-            let client = self.accept(client);
+                let client = self.accept(client);
 
-            thread::Builder::new()
-                .name(format!("{SERVICE_KIND} {SERVICE} {client_addr}"))
-                .spawn_scoped(scope, move || {
-                    if let Err(e) = client.start(channel) {
-                        crate::error!("error: {e}");
-                    }
-                })?;
+                thread::Builder::new()
+                    .name(format!("{SERVICE_KIND} {SERVICE} {client_addr}"))
+                    .spawn_scoped(scope, move || {
+                        if let Err(e) = client.start(channel) {
+                            crate::error!("error: {e}");
+                        }
+                    })?;
+            }
         })
     }
 }

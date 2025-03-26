@@ -305,7 +305,9 @@ fn generic_channel_open_event(
 ) {
     match event {
         headers::RDP_SVC_CHANNEL_EVENT_CHANNEL_EVENT_DATA_RECEIVED => {
-            common::trace!("channel_open_event called (event = DATA_RECEIVED, data_length = {data_length}, total_length = {total_length})");
+            common::trace!(
+                "channel_open_event called (event = DATA_RECEIVED, data_length = {data_length}, total_length = {total_length})"
+            );
             if let Some(from_rdp) = crate::SVC_TO_CONTROL.get() {
                 common::trace!("read {data_length} bytes");
 
@@ -450,22 +452,24 @@ fn generic_virtual_channel_entry(
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn VirtualChannelEntry(
-    entry_points: headers::PCHANNEL_ENTRY_POINTS,
-) -> headers::BOOL {
-    match generic_virtual_channel_entry(Entrypoints::Basic(*entry_points), ptr::null_mut()) {
+#[unsafe(no_mangle)]
+extern "C" fn VirtualChannelEntry(entry_points: headers::PCHANNEL_ENTRY_POINTS) -> headers::BOOL {
+    match unsafe {
+        generic_virtual_channel_entry(Entrypoints::Basic(*entry_points), ptr::null_mut())
+    } {
         Ok(()) => headers::TRUE,
         Err(()) => headers::FALSE,
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn VirtualChannelEntryEx(
+#[unsafe(no_mangle)]
+extern "C" fn VirtualChannelEntryEx(
     entry_points: headers::PCHANNEL_ENTRY_POINTS_EX,
     init_handle: headers::PVOID,
 ) -> headers::BOOL {
-    match generic_virtual_channel_entry(Entrypoints::Extended(*entry_points), init_handle) {
+    match unsafe {
+        generic_virtual_channel_entry(Entrypoints::Extended(*entry_points), init_handle)
+    } {
         Ok(()) => headers::TRUE,
         Err(()) => headers::FALSE,
     }

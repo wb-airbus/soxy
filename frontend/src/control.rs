@@ -74,12 +74,13 @@ impl Control {
                                 None => {
                                     self.svc_received_data.append(&mut data);
                                     break;
-                                },
+                                }
                                 Some(len) => {
                                     if len == data.len() {
                                         // exactly one chunk
                                         let chunk = api::Chunk::deserialize(data)?;
-                                        self.frontend_output.send(api::ChunkControl::Chunk(chunk))?;
+                                        self.frontend_output
+                                            .send(api::ChunkControl::Chunk(chunk))?;
                                         break;
                                     } else {
                                         // at least one chunk, maybe more
@@ -90,7 +91,8 @@ impl Control {
                                         // remaining data are back in data
                                         mem::swap(&mut tmp, &mut data);
                                         let chunk = api::Chunk::deserialize(tmp)?;
-                                        self.frontend_output.send(api::ChunkControl::Chunk(chunk))?;
+                                        self.frontend_output
+                                            .send(api::ChunkControl::Chunk(chunk))?;
                                     }
                                 }
                             }

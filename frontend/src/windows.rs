@@ -114,7 +114,7 @@ fn rdp_unregister() {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(non_snake_case, unused_variables)]
 extern "system" fn DllRegisterServer() -> ws::core::HRESULT {
     unsafe { ws::Win32::System::Console::AllocConsole() };
@@ -144,7 +144,7 @@ extern "system" fn DllRegisterServer() -> ws::core::HRESULT {
     ws::Win32::Foundation::S_OK
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(non_snake_case, unused_variables)]
 extern "system" fn DllUnregisterServer() -> ws::core::HRESULT {
     unsafe { ws::Win32::System::Console::AllocConsole() };
