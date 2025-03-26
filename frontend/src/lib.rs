@@ -11,24 +11,26 @@ mod svc;
 mod windows;
 
 pub enum Error {
-    Svc(svc::Error),
+    Api(api::Error),
     Io(io::Error),
     PipelineBroken,
+    Svc(svc::Error),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            Self::Svc(e) => write!(f, "virtual channel error: {e}"),
+            Self::Api(e) => write!(f, "API error: {e}"),
             Self::Io(e) => write!(f, "I/O error: {e}"),
             Self::PipelineBroken => write!(f, "broken pipeline"),
+            Self::Svc(e) => write!(f, "virtual channel error: {e}"),
         }
     }
 }
 
-impl From<svc::Error> for Error {
-    fn from(e: svc::Error) -> Self {
-        Self::Svc(e)
+impl From<api::Error> for Error {
+    fn from(e: api::Error) -> Self {
+        Self::Api(e)
     }
 }
 
@@ -47,6 +49,12 @@ impl From<crossbeam_channel::RecvError> for Error {
 impl<T> From<crossbeam_channel::SendError<T>> for Error {
     fn from(_e: crossbeam_channel::SendError<T>) -> Self {
         Self::PipelineBroken
+    }
+}
+
+impl From<svc::Error> for Error {
+    fn from(e: svc::Error) -> Self {
+        Self::Svc(e)
     }
 }
 

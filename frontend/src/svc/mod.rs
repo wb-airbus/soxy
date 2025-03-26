@@ -21,7 +21,7 @@ pub enum Command {
 
 pub enum Response {
     ChangeState(State),
-    ReceivedChunk(api::Chunk),
+    ReceivedData(Vec<u8>),
     WriteCancelled,
 }
 

@@ -297,17 +297,11 @@ extern "C" fn ICADataArrival(
         );
 
         let data = unsafe { slice::from_raw_parts(pBuf.cast::<u8>(), Length as usize) };
+        let data = Vec::from(data);
 
-        match api::Chunk::deserialize(data) {
-            Err(e) => {
-                common::error!("failed to deserialize chunk: {e}");
-            }
-            Ok(chunk) => {
-                from_rdp
-                    .send(super::Response::ReceivedChunk(chunk))
-                    .expect("internal error: failed to send RDP message");
-            }
-        }
+        from_rdp
+            .send(super::Response::ReceivedData(data))
+            .expect("internal error: failed to send RDP message");
     }
 
     headers::CLIENT_STATUS_SUCCESS

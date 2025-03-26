@@ -1,4 +1,4 @@
-use std::{io, os, ptr};
+use std::{io, os, ptr, thread};
 use windows_sys as ws;
 
 pub struct Svc<'a> {
@@ -109,14 +109,27 @@ impl super::Handler for Handle<'_> {
 
         let mut written = 0;
 
-        let ret = unsafe { (self.write)(self.wtshandle, data.as_ptr(), to_write, &mut written) };
+        common::trace!("write {to_write} bytes");
 
-        if ret == 0 || written != to_write {
-            let err = io::Error::last_os_error();
-            Err(super::Error::VirtualChannelWriteFailed(err))
-        } else {
-            Ok(usize::try_from(written)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?)
+        loop {
+            let ret =
+                unsafe { (self.write)(self.wtshandle, data.as_ptr(), to_write, &mut written) };
+
+            if ret == 0 || written != to_write {
+                if written == 0 {
+                    common::trace!("send buffer seems full, yield now");
+                    thread::yield_now();
+                    continue;
+                }
+                if written != to_write {
+                    common::error!("partial write: {written} / {to_write}");
+                }
+                let err = io::Error::last_os_error();
+                return Err(super::Error::VirtualChannelWriteFailed(err));
+            } else {
+                return Ok(usize::try_from(written)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?);
+            }
         }
     }
 }

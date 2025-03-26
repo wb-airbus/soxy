@@ -1,5 +1,4 @@
 use super::semaphore;
-use common::api;
 use std::{collections, ffi, fmt, ptr, slice, string, sync};
 
 mod headers;
@@ -308,29 +307,20 @@ fn generic_channel_open_event(
         headers::RDP_SVC_CHANNEL_EVENT_CHANNEL_EVENT_DATA_RECEIVED => {
             common::trace!("channel_open_event called (event = DATA_RECEIVED, data_length = {data_length}, total_length = {total_length})");
             if let Some(from_rdp) = crate::SVC_TO_CONTROL.get() {
-                assert!(data_length == total_length);
-                assert!(
-                    data_length as usize
-                        <= (api::Chunk::serialized_overhead() + api::Chunk::max_payload_length())
-                );
+                common::trace!("read {data_length} bytes");
+
                 let data =
                     unsafe { slice::from_raw_parts(data.cast::<u8>(), data_length as usize) };
-                match api::Chunk::deserialize(data) {
-                    Err(e) => {
-                        common::error!("failed to deserialize chunk: {e}");
-                    }
-                    Ok(chunk) => {
-                        from_rdp
-                            .send(super::Response::ReceivedChunk(chunk))
-                            .expect("internal error: failed to send RDP message");
-                    }
-                }
+                let data = Vec::from(data);
+                from_rdp
+                    .send(super::Response::ReceivedData(data))
+                    .expect("internal error: failed to send RDP message");
             }
         }
 
         headers::RDP_SVC_CHANNEL_EVENT_CHANNEL_EVENT_WRITE_CANCELLED => {
             let marker = data as u32;
-            common::trace!(
+            common::debug!(
                 "channel_open_event called (event = WRITE_CANCELLED, marker = {marker})"
             );
             if let Some(write_ack) = WRITE_ACK.read().unwrap().as_ref() {

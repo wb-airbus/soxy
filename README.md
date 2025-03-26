@@ -4,8 +4,8 @@
 [![Build](https://github.com/airbus-seclab/soxy/actions/workflows/build.yml/badge.svg)](https://github.com/airbus-seclab/soxy/actions/workflows/build.yml)
 
 soxy is a modular tool to interact with several VDIs that operate over RDP,
-such as VMware Horizon, Citrix and native Windows RDP. It supports useful debug
-services (e.g. clipboard, console/shell, sharing, FTP server, SOCKS5 proxy).
+such as VMware Horizon, Citrix, native Windows RDP and XRDP. It supports useful
+debug services (e.g. clipboard, console/shell, sharing, FTP server, SOCKS5 proxy).
 
 ## 🎯 Features
 
@@ -29,7 +29,7 @@ as [SocksOverRDP](https://github.com/nccgroup/SocksOverRDP),
 [rdp2tcp](https://rdp2tcp.sourceforge.net).
 
 soxy supports native Windows RDP (real or virtual host) as well as VMware
-Horizon and Citrix virtual machines.
+Horizon, Citrix virtual machines and XRDP.
 
 On the client side, soxy works as a plugin on:
 
@@ -385,6 +385,22 @@ reg add HKLM\SOFTWARE\WOW6432Node\Policies\Citrix\VCPolicies /v VirtualChannelWh
 ```
 
 Note that in both cases, you have to reboot the Citrix host afterward.
+
+### XRDP
+
+If you get an error like `failed to open channel handle: virtual channel open failed`
+it  means there are restrictions on XRDP host virtual channels. To fix this,
+if you have (local) administrator privileges, you can disable XRDP restrictions
+for this very specific virtual channel. Edit `/etc/xrdp/xrdp.ini`, look for `[Channels]`
+entry and add below `SOXY=true`.
+
+The `backend` needs to be able to load `libxrdpapi.so` from the library path.
+On most Linux distributions, it is not by default. You can add it on the
+command line, e.g. for `x86_64` on Debian:
+
+```bash
+LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/ soxy
+```
 
 ## 🚧 Contributing
 

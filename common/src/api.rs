@@ -232,14 +232,36 @@ impl Chunk {
         u16::from_le_bytes(data_len_bytes)
     }
 
-    pub fn deserialize(data: &[u8]) -> Result<Self, Error> {
+    pub fn can_deserialize_from(data: &[u8]) -> Option<usize> {
         let len = data.len();
+        if len < SERIALIZE_OVERHEAD {
+            return None;
+        }
+        let payload_len_bytes = [data[5], data[6]];
+        let payload_len = u16::from_le_bytes(payload_len_bytes);
+        let expected_len = SERIALIZE_OVERHEAD + payload_len as usize;
+        if len < expected_len {
+            return None;
+        }
+        Some(expected_len)
+    }
+
+    pub fn deserialize_from(data: &[u8]) -> Result<Self, Error> {
+        let content = Vec::from(data);
+        Self::deserialize(content)
+    }
+
+    pub fn deserialize(content: Vec<u8>) -> Result<Self, Error> {
+        let len = content.len();
         if !(SERIALIZE_OVERHEAD..=CHUNK_LENGTH).contains(&len) {
             return Err(Error::InvalidChunkSize(len));
         }
-        let mut content = Vec::with_capacity(len);
-        content.extend_from_slice(data);
-        Ok(Self(content))
+        let res = Self(content);
+        if SERIALIZE_OVERHEAD + res.payload_len() as usize == len {
+            Ok(res)
+        } else {
+            Err(Error::InvalidChunkSize(len))
+        }
     }
 
     pub const fn serialized_overhead() -> usize {

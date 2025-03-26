@@ -75,6 +75,7 @@ impl From<io::Error> for Error {
 enum Instance {
     Citrix,
     Horizon,
+    Xrdp,
     #[cfg(target_os = "windows")]
     Windows,
 }
@@ -100,6 +101,12 @@ impl From<Instance> for SymbolNames {
                 read: "VDP_VirtualChannelRead",
                 write: "VDP_VirtualChannelWrite",
                 query: "VDP_VirtualChannelQuery",
+            },
+            Instance::Xrdp => Self {
+                open: "WTSVirtualChannelOpen",
+                read: "WTSVirtualChannelRead",
+                write: "WTSVirtualChannelWrite",
+                query: "WTSVirtualChannelQuery",
             },
             #[cfg(target_os = "windows")]
             Instance::Windows => Self {
@@ -159,6 +166,19 @@ impl Implementation {
                 }
             }
 
+            let file = libloading::library_filename("xrdpapi");
+            common::debug!(
+                "trying to load XRDP library from {}",
+                file.to_string_lossy()
+            );
+            if let Ok(lib) = libloading::Library::new(file) {
+                common::info!("XRDP library loaded");
+                return Ok(Self {
+                    instance: Instance::Xrdp,
+                    lib,
+                });
+            }
+
             Err(Error::LibraryNotFound)
         }
     }
@@ -211,6 +231,35 @@ impl<'a> Svc<'a> {
                 Ok(Self::High { svc })
             }
             Instance::Horizon => {
+                let svc = high::Svc::load(&implem.lib, &symbol_names)?;
+                Ok(Self::High { svc })
+            }
+            Instance::Xrdp => {
+                #[cfg(feature = "log")]
+                {
+                    common::debug!("initiate XRDP logging");
+
+                    let log_init = unsafe {
+                        implem.lib.get::<fn(
+                            os::raw::c_int,
+                            *mut os::raw::c_void,
+                        ) -> *mut os::raw::c_void>(
+                            "log_config_init_for_console".as_bytes()
+                        )?
+                    };
+                    let log_start = unsafe {
+                        implem
+                            .lib
+                            .get::<fn(*mut os::raw::c_void)>("log_start_from_param".as_bytes())?
+                    };
+
+                    let lc = log_init(4, std::ptr::null_mut());
+
+                    if !lc.is_null() {
+                        log_start(lc);
+                    }
+                }
+
                 let svc = high::Svc::load(&implem.lib, &symbol_names)?;
                 Ok(Self::High { svc })
             }

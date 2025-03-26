@@ -1,5 +1,5 @@
 use common::{self, api, service};
-use std::{ffi, fmt, sync, thread, time};
+use std::{ffi, fmt, mem, sync, thread, time};
 use svc::Handler;
 use windows_sys as ws;
 
@@ -86,7 +86,8 @@ fn frontend_to_backend<'a>(
     let mut connect = true;
     let mut disconnect = false;
 
-    let mut buf = [0u8; api::Chunk::serialized_overhead() + api::Chunk::max_payload_length()];
+    let mut received_data = Vec::with_capacity(2 * api::CHUNK_LENGTH);
+    let mut buf = [0u8; api::CHUNK_LENGTH];
 
     loop {
         if connect {
@@ -115,17 +116,62 @@ fn frontend_to_backend<'a>(
                     common::error!("failed to read from channel: {e}");
                     disconnect = true;
                 }
-                Ok(read) => {
-                    common::trace!("read = {:?}", &buf[0..read]);
+                Ok(mut read) => {
+                    common::trace!("read {read} bytes");
 
-                    match api::Chunk::deserialize(&buf[0..read]) {
-                        Err(e) => {
-                            common::error!("failed to deserialize chunk: {e}");
-                            disconnect = true;
+                    if received_data.is_empty() {
+                        let mut off = 0;
+                        loop {
+                            match api::Chunk::can_deserialize_from(&buf[off..off + read]) {
+                                None => {
+                                    received_data.extend_from_slice(&buf[off..off + read]);
+                                    break;
+                                }
+                                Some(len) => {
+                                    match api::Chunk::deserialize_from(&buf[off..off + len]) {
+                                        Err(e) => {
+                                            common::error!("failed to deserialize chunk: {e}");
+                                            disconnect = true;
+                                        }
+                                        Ok(chunk) => {
+                                            common::trace!("{chunk}");
+                                            to_backend.send(api::ChunkControl::Chunk(chunk))?;
+                                        }
+                                    }
+                                    off += len;
+                                    read -= len;
+                                    if read == 0 {
+                                        break;
+                                   }
+                                }
+                            }
                         }
-                        Ok(chunk) => {
-                            common::trace!("{chunk}");
-                            to_backend.send(api::ChunkControl::Chunk(chunk))?;
+                    } else {
+                        received_data.extend_from_slice(&buf[0..read]);
+                        loop {
+                            match api::Chunk::can_deserialize_from(&received_data) {
+                                None => break,
+                                Some(len) => {
+                                    // tmp contains the tail, i.e. what will
+                                    // not be deserialized
+                                    let mut tmp = received_data.split_off(len);
+                                    // tmp contains data to deserialize,
+                                    // remaining data are back in
+                                    // self.svc_received_data
+                                    mem::swap(&mut tmp, &mut received_data);
+
+                                    match api::Chunk::deserialize(tmp) {
+                                        Err(e) => {
+                                            common::error!("failed to deserialize chunk: {e}");
+                                            disconnect = true;
+                                        }
+                                        Ok(chunk) => {
+                                            common::trace!("{chunk}");
+                                            to_backend.send(api::ChunkControl::Chunk(chunk))?;
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -134,6 +180,7 @@ fn frontend_to_backend<'a>(
 
         if disconnect {
             common::info!("disconnecting from channel");
+            received_data.clear();
             channel.write().unwrap().take();
             to_backend.send(api::ChunkControl::Shutdown)?;
             disconnect = false;

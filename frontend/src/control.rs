@@ -1,6 +1,6 @@
 use crate::svc;
 use common::api;
-use std::{sync, thread};
+use std::{mem, sync, thread};
 
 const TO_SVC_CHANNEL_SIZE: usize = 256;
 const FRONTEND_CHANNEL_SIZE: usize = 1;
@@ -11,6 +11,7 @@ pub struct Control {
     frontend_input: crossbeam_channel::Receiver<api::ChunkControl>,
     frontend_output: crossbeam_channel::Sender<api::ChunkControl>,
     svc_input: crossbeam_channel::Receiver<svc::Response>,
+    svc_received_data: Vec<u8>,
     svc_output: crossbeam_channel::Sender<svc::Command>,
 }
 
@@ -32,10 +33,11 @@ impl Control {
         (
             Self {
                 state: sync::Arc::new(sync::RwLock::new(svc::State::Disconnected)),
-                svc_input: from_svc_receiver,
-                svc_output: to_svc_sender,
                 frontend_input: from_frontend_receiver,
                 frontend_output: to_frontend_sender,
+                svc_input: from_svc_receiver,
+                svc_received_data: Vec::with_capacity(2 * common::api::CHUNK_LENGTH),
+                svc_output: to_svc_sender,
             },
             from_frontend_sender,
             to_frontend_receiver,
@@ -44,7 +46,7 @@ impl Control {
         )
     }
 
-    fn control_from_svc(&self) -> Result<(), crate::Error> {
+    fn control_from_svc(&mut self) -> Result<(), crate::Error> {
         loop {
             match self.svc_input.recv()? {
                 svc::Response::ChangeState(new_state) => {
@@ -63,9 +65,56 @@ impl Control {
                         }
                     }
                 }
-                svc::Response::ReceivedChunk(chunk) => {
-                    common::trace!("svc -> frontend: {chunk}");
-                    self.frontend_output.send(api::ChunkControl::Chunk(chunk))?;
+                svc::Response::ReceivedData(mut data) => {
+                    common::trace!("svc -> frontend: {} bytes", data.len());
+
+                    if self.svc_received_data.is_empty() {
+                        loop {
+                            match api::Chunk::can_deserialize_from(&data) {
+                                None => {
+                                    self.svc_received_data.append(&mut data);
+                                    break;
+                                },
+                                Some(len) => {
+                                    if len == data.len() {
+                                        // exactly one chunk
+                                        let chunk = api::Chunk::deserialize(data)?;
+                                        self.frontend_output.send(api::ChunkControl::Chunk(chunk))?;
+                                        break;
+                                    } else {
+                                        // at least one chunk, maybe more
+                                        // tmp contains the tail, i.e. what will
+                                        // not be deserialized
+                                        let mut tmp = data.split_off(len);
+                                        // tmp contains data to deserialize,
+                                        // remaining data are back in data
+                                        mem::swap(&mut tmp, &mut data);
+                                        let chunk = api::Chunk::deserialize(tmp)?;
+                                        self.frontend_output.send(api::ChunkControl::Chunk(chunk))?;
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        self.svc_received_data.append(&mut data);
+                        loop {
+                            match api::Chunk::can_deserialize_from(&self.svc_received_data) {
+                                None => break,
+                                Some(len) => {
+                                    // tmp contains the tail, i.e. what will
+                                    // not be deserialized
+                                    let mut tmp = self.svc_received_data.split_off(len);
+                                    // tmp contains data to deserialize,
+                                    // remaining data are back in
+                                    // self.svc_received_data
+                                    mem::swap(&mut tmp, &mut self.svc_received_data);
+
+                                    let chunk = api::Chunk::deserialize(tmp)?;
+                                    self.frontend_output.send(api::ChunkControl::Chunk(chunk))?;
+                                }
+                            }
+                        }
+                    }
                 }
                 svc::Response::WriteCancelled => {
                     common::error!("svc: write cancelled");
@@ -90,7 +139,7 @@ impl Control {
         }
     }
 
-    pub(crate) fn start(self) {
+    pub(crate) fn start(mut self) {
         let myself = self.clone();
         thread::spawn(move || {
             if let Err(e) = myself.control_to_svc() {
