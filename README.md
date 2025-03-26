@@ -107,9 +107,10 @@ All Linux and Windows libraries and executables of soxy can be built on Linux.
 The following elements are required to build them:
 
 - `make`;
-- `mingw-w64` package on Arch, Debian and Ubuntu, `mingw64-gcc` and
-  `mingw32-gcc` on Fedora;
 - `clang`;
+- `mingw-w64` package on Arch, Debian and Ubuntu, `mingw64-gcc` and
+  `mingw32-gcc` on Fedora (to build Windows binaries);
+- `gcc-multilib` on Debian and Ubuntu to but i686 Linux binaries;
 - [rustup](https://rustup.rs/) installed (see next section).
 
 
