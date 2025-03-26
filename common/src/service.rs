@@ -1,4 +1,4 @@
-use crate::{api, clipboard, command, ftp, socks5, stage0};
+use crate::{api, clipboard, command, ftp, input, socks5, stage0};
 #[cfg(feature = "backend")]
 use std::collections::hash_map;
 use std::{
@@ -13,18 +13,18 @@ const CLIENT_CHUNK_BUFFER_SIZE: usize = 16;
 pub struct Channel {
     clients:
         sync::RwLock<collections::HashMap<api::ClientId, crossbeam_channel::Sender<api::Chunk>>>,
-    to_rdp: crossbeam_channel::Sender<api::ChunkControl>,
+    to_rdp: crossbeam_channel::Sender<api::ChannelControl>,
 }
 
 impl Channel {
-    pub fn new(to_rdp: crossbeam_channel::Sender<api::ChunkControl>) -> Self {
+    pub fn new(to_rdp: crossbeam_channel::Sender<api::ChannelControl>) -> Self {
         Self {
             clients: sync::RwLock::new(collections::HashMap::new()),
             to_rdp,
         }
     }
 
-    pub fn shutdown(&self) {
+    pub(crate) fn shutdown(&self) {
         match self.clients.write() {
             sync::LockResult::Err(e) => {
                 crate::error!("failed to acquire lock to shutdown channel: {e}");
@@ -42,8 +42,31 @@ impl Channel {
         let _ = self.clients.write().unwrap().remove(&client_id);
     }
 
-    fn send(&self, chunk: api::Chunk) -> Result<(), api::Error> {
-        self.to_rdp.send(api::ChunkControl::Chunk(chunk))?;
+    fn send_chunk(&self, chunk: api::Chunk) -> Result<(), api::Error> {
+        self.to_rdp.send(api::ChannelControl::SendChunk(chunk))?;
+        Ok(())
+    }
+
+    #[cfg(feature = "frontend")]
+    pub(crate) fn reset_client(&self) -> Result<(), api::Error> {
+        self.to_rdp.send(api::ChannelControl::ResetClient)?;
+        Ok(())
+    }
+
+    #[cfg(feature = "frontend")]
+    pub(crate) fn send_input_setting(
+        &self,
+        setting: input::InputSetting,
+    ) -> Result<(), api::Error> {
+        self.to_rdp
+            .send(api::ChannelControl::SendInputSetting(setting))?;
+        Ok(())
+    }
+
+    #[cfg(feature = "frontend")]
+    pub(crate) fn send_input_action(&self, action: input::InputAction) -> Result<(), api::Error> {
+        self.to_rdp
+            .send(api::ChannelControl::SendInputAction(action))?;
         Ok(())
     }
 
@@ -87,7 +110,7 @@ impl Channel {
             hash_map::Entry::Vacant(ve) => match lookup_bytes(payload) {
                 Err(service) => {
                     crate::error!("new client for unknown service {service}!");
-                    self.send(api::Chunk::end(client_id))?;
+                    self.send_chunk(api::Chunk::end(client_id))?;
                 }
                 Ok(service) => {
                     crate::debug!("new {service} client {client_id:x}");
@@ -117,16 +140,25 @@ impl Channel {
     pub fn start(
         &self,
         service_kind: Kind,
-        from_rdp: &crossbeam_channel::Receiver<api::ChunkControl>,
+        from_rdp: &crossbeam_channel::Receiver<api::ChannelControl>,
     ) -> Result<(), api::Error> {
         thread::scope(|scope| loop {
             let control_chunk = from_rdp.recv()?;
 
             match control_chunk {
-                api::ChunkControl::Shutdown => {
+                api::ChannelControl::Shutdown => {
                     self.shutdown();
                 }
-                api::ChunkControl::Chunk(chunk) => match chunk.chunk_type() {
+                api::ChannelControl::ResetClient => {
+                    crate::error!("discarding reset client request");
+                }
+                api::ChannelControl::SendInputSetting(_) => {
+                    crate::error!("discarding input setting request");
+                }
+                api::ChannelControl::SendInputAction(_) => {
+                    crate::error!("discarding input action request");
+                }
+                api::ChannelControl::SendChunk(chunk) => match chunk.chunk_type() {
                     Err(_) => {
                         crate::error!("discarding invalid chunk");
                     }
@@ -164,7 +196,7 @@ impl Channel {
                                     crate::debug!(
                                         "discarding chunk for unknown client {client_id:x}"
                                     );
-                                    let _ = self.send(api::Chunk::end(client_id));
+                                    let _ = self.send_chunk(api::Chunk::end(client_id));
                                 }
                             }
                             api::ChunkType::End => {
@@ -238,7 +270,7 @@ impl RdpStreamCommon<'_> {
         match &self.state {
             RdpStreamState::Ready => {
                 self.channel
-                    .send(api::Chunk::start(self.client_id, self.service)?)
+                    .send_chunk(api::Chunk::start(self.client_id, self.service)?)
                     .map_err(|e| io::Error::new(io::ErrorKind::BrokenPipe, e.to_string()))?;
                 crate::debug!("connect",);
                 self.state = RdpStreamState::Connected;
@@ -267,7 +299,7 @@ impl RdpStreamCommon<'_> {
             }
             RdpStreamState::Connected => {
                 crate::debug!("disconnecting",);
-                let _ = self.channel.send(api::Chunk::end(self.client_id));
+                let _ = self.channel.send_chunk(api::Chunk::end(self.client_id));
                 self.disconnected();
             }
             RdpStreamState::Disconnected => (),
@@ -312,12 +344,12 @@ impl<'a> RdpStreamControl<'a> {
         self.0.write().unwrap().connect()
     }
 
-    fn send(&self, chunk: api::Chunk) -> Result<(), io::Error> {
+    fn send_chunk(&self, chunk: api::Chunk) -> Result<(), io::Error> {
         self.0
             .write()
             .unwrap()
             .channel
-            .send(chunk)
+            .send_chunk(chunk)
             .map_err(|e| io::Error::new(io::ErrorKind::BrokenPipe, e.to_string()))
     }
 
@@ -536,7 +568,7 @@ impl io::Write for RdpWriter<'_> {
                 api::Chunk::data(self.control.client_id(), &self.buffer[0..self.buffer_len])?;
             self.buffer_len = 0;
 
-            if let Err(e) = self.control.send(chunk) {
+            if let Err(e) = self.control.send_chunk(chunk) {
                 self.control.disconnected();
                 return Err(io::Error::new(io::ErrorKind::BrokenPipe, e));
             }
@@ -689,7 +721,7 @@ type FrontendHandler<S, C> = for<'a> fn(
     scope: &'a thread::Scope<'a, '_>,
     client: C,
     channel: &'a Channel,
-) -> Result<(), io::Error>;
+) -> Result<(), api::Error>;
 
 #[cfg(feature = "frontend")]
 type TcpFrontendHandler = FrontendHandler<TcpFrontendServer, net::TcpStream>;
@@ -750,9 +782,10 @@ pub fn lookup(name: &str) -> Option<&'static Service> {
     SERVICES.iter().find(|s| s.name == name).map(|s| *s)
 }
 
-pub static SERVICES: [&Service; 5] = [
+pub static SERVICES: [&Service; 6] = [
     &clipboard::SERVICE,
     &command::SERVICE,
+    &input::SERVICE,
     &ftp::SERVICE,
     &socks5::SERVICE,
     &stage0::SERVICE,

@@ -1,5 +1,5 @@
 use super::protocol;
-use crate::service;
+use crate::{api, service};
 use std::{
     io::{self, BufRead, Write},
     net, thread,
@@ -10,7 +10,7 @@ pub(crate) fn tcp_handler<'a>(
     _scope: &'a thread::Scope<'a, '_>,
     stream: net::TcpStream,
     channel: &'a service::Channel,
-) -> Result<(), io::Error> {
+) -> Result<(), api::Error> {
     let lstream = stream.try_clone()?;
     let mut client_read = io::BufReader::new(lstream);
 

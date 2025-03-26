@@ -41,17 +41,26 @@ impl<T> From<crossbeam_channel::SendError<T>> for Error {
 
 fn backend_to_frontend(
     channel: &sync::RwLock<Option<svc::Handle<'_>>>,
-    from_backend: &crossbeam_channel::Receiver<api::ChunkControl>,
+    from_backend: &crossbeam_channel::Receiver<api::ChannelControl>,
 ) -> Result<(), Error> {
     let mut disconnect = false;
 
     loop {
         match from_backend.recv()? {
-            api::ChunkControl::Shutdown => {
+            api::ChannelControl::Shutdown => {
                 common::info!("received shutdown, closing");
                 disconnect = true;
             }
-            api::ChunkControl::Chunk(chunk) => {
+            api::ChannelControl::ResetClient => {
+                common::info!("discarding reset client");
+            }
+            api::ChannelControl::SendInputSetting(_setting) => {
+                common::debug!("discarding input setting");
+            }
+            api::ChannelControl::SendInputAction(_action) => {
+                common::debug!("discarding input action");
+            }
+            api::ChannelControl::SendChunk(chunk) => {
                 common::trace!("{chunk}");
 
                 let data = chunk.serialized();
@@ -81,7 +90,7 @@ fn backend_to_frontend(
 fn frontend_to_backend<'a>(
     svc: &'a svc::Svc<'a>,
     channel: &'a sync::RwLock<Option<svc::Handle<'a>>>,
-    to_backend: &crossbeam_channel::Sender<api::ChunkControl>,
+    to_backend: &crossbeam_channel::Sender<api::ChannelControl>,
 ) -> Result<(), Error> {
     let mut connect = true;
     let mut disconnect = false;
@@ -135,7 +144,8 @@ fn frontend_to_backend<'a>(
                                         }
                                         Ok(chunk) => {
                                             common::trace!("{chunk}");
-                                            to_backend.send(api::ChunkControl::Chunk(chunk))?;
+                                            to_backend
+                                                .send(api::ChannelControl::SendChunk(chunk))?;
                                         }
                                     }
                                     off += len;
@@ -167,7 +177,8 @@ fn frontend_to_backend<'a>(
                                         }
                                         Ok(chunk) => {
                                             common::trace!("{chunk}");
-                                            to_backend.send(api::ChunkControl::Chunk(chunk))?;
+                                            to_backend
+                                                .send(api::ChannelControl::SendChunk(chunk))?;
                                         }
                                     }
                                 }
@@ -182,7 +193,7 @@ fn frontend_to_backend<'a>(
             common::info!("disconnecting from channel");
             received_data.clear();
             channel.write().unwrap().take();
-            to_backend.send(api::ChunkControl::Shutdown)?;
+            to_backend.send(api::ChannelControl::Shutdown)?;
             disconnect = false;
         }
     }

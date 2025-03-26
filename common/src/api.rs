@@ -1,4 +1,4 @@
-use crate::service;
+use crate::{input, service};
 #[cfg(feature = "frontend")]
 use std::sync;
 use std::{fmt, io};
@@ -216,7 +216,10 @@ impl fmt::Display for Chunk {
     }
 }
 
-pub enum ChunkControl {
-    Chunk(Chunk),
+pub enum ChannelControl {
+    SendChunk(Chunk),
+    SendInputSetting(input::InputSetting),
+    SendInputAction(input::InputAction),
+    ResetClient,
     Shutdown,
 }

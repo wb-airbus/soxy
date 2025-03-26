@@ -1,5 +1,5 @@
 use super::protocol;
-use crate::service;
+use crate::{api, service};
 use std::{
     fmt,
     io::{self, Read, Write},
@@ -124,10 +124,10 @@ pub(crate) fn tcp_handler(
     _scope: &thread::Scope,
     mut stream: net::TcpStream,
     channel: &service::Channel,
-) -> Result<(), io::Error> {
+) -> Result<(), api::Error> {
     match handshake(&mut stream) {
         Err(e) => match e {
-            Error::Io(e) => Err(e),
+            Error::Io(e) => Err(api::Error::Io(e)),
             Error::UnsupportedVersion(_) => {
                 let buf = [protocol::VERSION, 0xFF];
                 stream.write_all(&buf)?;
@@ -181,8 +181,8 @@ pub(crate) fn tcp_handler(
             command.send(&mut client_rdp)?;
 
             match command {
-                protocol::Command::Connect(_) => command_connect(stream, client_rdp),
-                protocol::Command::Bind => command_bind(stream, client_rdp),
+                protocol::Command::Connect(_) => Ok(command_connect(stream, client_rdp)?),
+                protocol::Command::Bind => Ok(command_bind(stream, client_rdp)?),
             }
         }
     }

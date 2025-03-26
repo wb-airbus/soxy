@@ -10,7 +10,7 @@ pub(crate) fn tcp_handler(
     _scope: &thread::Scope,
     stream: net::TcpStream,
     channel: &service::Channel,
-) -> Result<(), io::Error> {
+) -> Result<(), api::Error> {
     let lstream = stream.try_clone()?;
     let mut client_read = io::BufReader::new(lstream);
 
@@ -43,6 +43,7 @@ pub(crate) fn tcp_handler(
     crate::trace!("ARGS = {args:?}");
 
     match command.as_str() {
+        "EXIT" | "QUIT" => (),
         "CAT" | "PUSH" | "PUT" | "SEND" | "UPLOAD" => {
             match fs::File::options().read(true).open(args) {
                 Err(e) => {

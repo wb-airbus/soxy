@@ -8,8 +8,8 @@ const FRONTEND_CHANNEL_SIZE: usize = 1;
 #[derive(Clone)]
 pub struct Control {
     state: sync::Arc<sync::RwLock<svc::State>>,
-    frontend_input: crossbeam_channel::Receiver<api::ChunkControl>,
-    frontend_output: crossbeam_channel::Sender<api::ChunkControl>,
+    frontend_input: crossbeam_channel::Receiver<api::ChannelControl>,
+    frontend_output: crossbeam_channel::Sender<api::ChannelControl>,
     svc_input: crossbeam_channel::Receiver<svc::Response>,
     svc_received_data: Vec<u8>,
     svc_output: crossbeam_channel::Sender<svc::Command>,
@@ -18,8 +18,8 @@ pub struct Control {
 impl Control {
     pub(crate) fn new() -> (
         Self,
-        crossbeam_channel::Sender<api::ChunkControl>,
-        crossbeam_channel::Receiver<api::ChunkControl>,
+        crossbeam_channel::Sender<api::ChannelControl>,
+        crossbeam_channel::Receiver<api::ChannelControl>,
         crossbeam_channel::Sender<svc::Response>,
         crossbeam_channel::Receiver<svc::Command>,
     ) {
@@ -60,7 +60,7 @@ impl Control {
                             self.svc_output.send(svc::Command::Open)?;
                         }
                         svc::State::Disconnected | svc::State::Terminated => {
-                            self.frontend_output.send(api::ChunkControl::Shutdown)?;
+                            self.frontend_output.send(api::ChannelControl::Shutdown)?;
                             self.svc_output.send(svc::Command::Open)?;
                         }
                     }
@@ -80,7 +80,7 @@ impl Control {
                                         // exactly one chunk
                                         let chunk = api::Chunk::deserialize(data)?;
                                         self.frontend_output
-                                            .send(api::ChunkControl::Chunk(chunk))?;
+                                            .send(api::ChannelControl::SendChunk(chunk))?;
                                         break;
                                     }
 
@@ -92,7 +92,8 @@ impl Control {
                                     // remaining data are back in data
                                     mem::swap(&mut tmp, &mut data);
                                     let chunk = api::Chunk::deserialize(tmp)?;
-                                    self.frontend_output.send(api::ChunkControl::Chunk(chunk))?;
+                                    self.frontend_output
+                                        .send(api::ChannelControl::SendChunk(chunk))?;
                                 }
                             }
                         }
@@ -111,7 +112,8 @@ impl Control {
                                     mem::swap(&mut tmp, &mut self.svc_received_data);
 
                                     let chunk = api::Chunk::deserialize(tmp)?;
-                                    self.frontend_output.send(api::ChunkControl::Chunk(chunk))?;
+                                    self.frontend_output
+                                        .send(api::ChannelControl::SendChunk(chunk))?;
                                 }
                             }
                         }
@@ -119,8 +121,9 @@ impl Control {
                 }
                 svc::Response::WriteCancelled => {
                     common::error!("svc: write cancelled");
-                    self.svc_output.send(svc::Command::Close)?;
-                    self.frontend_output.send(api::ChunkControl::Shutdown)?;
+                    self.svc_output
+                        .send(svc::Command::Channel(api::ChannelControl::Shutdown))?;
+                    self.frontend_output.send(api::ChannelControl::Shutdown)?;
                     self.svc_output.send(svc::Command::Open)?;
                 }
             }
@@ -129,14 +132,8 @@ impl Control {
 
     fn control_to_svc(&self) -> Result<(), crate::Error> {
         loop {
-            match self.frontend_input.recv()? {
-                api::ChunkControl::Shutdown => {
-                    self.svc_output.send(svc::Command::Close)?;
-                }
-                api::ChunkControl::Chunk(chunk) => {
-                    self.svc_output.send(svc::Command::SendChunk(chunk))?;
-                }
-            }
+            self.svc_output
+                .send(svc::Command::Channel(self.frontend_input.recv()?))?;
         }
     }
 

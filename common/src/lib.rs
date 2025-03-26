@@ -3,6 +3,7 @@ use std::ffi;
 use std::fs;
 
 pub mod api;
+pub mod input;
 pub mod service;
 
 mod clipboard;

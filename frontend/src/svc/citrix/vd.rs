@@ -1,6 +1,6 @@
-use std::{ffi, mem, ptr, slice, sync};
-
 use super::headers;
+use crate::client;
+use std::{ffi, mem, ptr, slice, sync};
 
 struct VirtualDriver {
     data: headers::VD,
@@ -106,9 +106,11 @@ extern "C" fn Load(pLink: headers::PDLLLINK) -> ffi::c_int {
 
     let vd = VD.get_or_init(VirtualDriver::default);
 
-    let svc = super::Svc::default();
-    let svc = super::super::Svc::Citrix(svc);
-    let _ = super::super::SVC.write().unwrap().replace(svc);
+    let client = client::Client::load_from_entrypoints(0, ptr::null_mut());
+
+    let svc = super::Svc::new(client);
+    let svc = crate::svc::Svc::Citrix(svc);
+    let _ = crate::svc::SVC.write().unwrap().replace(svc);
 
     match unsafe { pLink.as_mut() } {
         None => {
@@ -138,7 +140,7 @@ extern "C" fn VdUnload(
         pLink.pData = ptr::null_mut();
     }
 
-    let _ = super::super::SVC.write().unwrap().take();
+    let _ = crate::svc::SVC.write().unwrap().take();
 
     headers::CLIENT_STATUS_SUCCESS
 }

@@ -1,23 +1,8 @@
 use super::semaphore;
+use crate::client;
 use std::{collections, ffi, fmt, ptr, slice, string, sync};
 
 mod headers;
-
-#[derive(Clone)]
-enum Entrypoints {
-    Basic(headers::CHANNEL_ENTRY_POINTS),
-    Extended(headers::CHANNEL_ENTRY_POINTS_EX),
-}
-
-static ENTRYPOINTS: sync::RwLock<Option<Entrypoints>> = sync::RwLock::new(None);
-
-struct WriteStatus {
-    sent: sync::RwLock<collections::HashMap<u32, Vec<u8>>>,
-    can_send: semaphore::Semaphore,
-    counter: sync::atomic::AtomicU32,
-}
-
-static WRITE_ACK: sync::RwLock<Option<WriteStatus>> = sync::RwLock::new(None);
 
 pub enum Error {
     NotReady,
@@ -35,32 +20,44 @@ impl fmt::Display for Error {
     }
 }
 
-enum RdpSvc {
-    Basic {
-        open: headers::VirtualChannelOpen,
-        write: headers::VirtualChannelWrite,
-        close: headers::VirtualChannelClose,
-    },
-    Extended {
-        open: headers::VirtualChannelOpenEx,
-        write: headers::VirtualChannelWriteEx,
-        close: headers::VirtualChannelCloseEx,
-    },
+struct WriteStatus {
+    sent: sync::RwLock<collections::HashMap<u32, Vec<u8>>>,
+    can_send: semaphore::Semaphore,
+    counter: sync::atomic::AtomicU32,
 }
 
-impl From<&Entrypoints> for RdpSvc {
-    fn from(entry_points: &Entrypoints) -> Self {
-        match entry_points {
-            Entrypoints::Basic(ep) => Self::Basic {
-                open: ep.pVirtualChannelOpen,
-                write: ep.pVirtualChannelWrite,
-                close: ep.pVirtualChannelClose,
-            },
-            Entrypoints::Extended(ep) => Self::Extended {
-                open: ep.pVirtualChannelOpenEx,
-                write: ep.pVirtualChannelWriteEx,
-                close: ep.pVirtualChannelCloseEx,
-            },
+static WRITE_ACK: sync::RwLock<Option<WriteStatus>> = sync::RwLock::new(None);
+
+enum Entrypoints {
+    Basic(headers::CHANNEL_ENTRY_POINTS),
+    Extended(headers::CHANNEL_ENTRY_POINTS_EX),
+}
+
+struct RdpSvc {
+    entrypoints: Entrypoints,
+    client: Option<client::Client>,
+}
+
+impl From<headers::PCHANNEL_ENTRY_POINTS> for RdpSvc {
+    fn from(pep: headers::PCHANNEL_ENTRY_POINTS) -> Self {
+        let ep = unsafe { *pep };
+        let client = client::Client::load_from_entrypoints(ep.cbSize, pep.cast());
+        let entrypoints = Entrypoints::Basic(ep);
+        Self {
+            entrypoints,
+            client,
+        }
+    }
+}
+
+impl From<headers::PCHANNEL_ENTRY_POINTS_EX> for RdpSvc {
+    fn from(pep: headers::PCHANNEL_ENTRY_POINTS_EX) -> Self {
+        let ep = unsafe { *pep };
+        let client = client::Client::load_from_entrypoints(ep.cbSize, pep.cast());
+        let entrypoints = Entrypoints::Extended(ep);
+        Self {
+            entrypoints,
+            client,
         }
     }
 }
@@ -69,9 +66,9 @@ impl RdpSvc {
     fn open(&mut self, init_handle: headers::LPVOID) -> Result<u32, Error> {
         let mut open_handle = 0;
 
-        let rc = match self {
-            Self::Basic { open, .. } => {
-                let open = open.as_ref().ok_or(Error::NotReady)?;
+        let rc = match self.entrypoints {
+            Entrypoints::Basic(ep) => {
+                let open = ep.pVirtualChannelOpen.as_ref().ok_or(Error::NotReady)?;
                 unsafe {
                     open(
                         init_handle,
@@ -83,8 +80,8 @@ impl RdpSvc {
                     )
                 }
             }
-            Self::Extended { open, .. } => {
-                let open = open.as_ref().ok_or(Error::NotReady)?;
+            Entrypoints::Extended(ep) => {
+                let open = ep.pVirtualChannelOpenEx.as_ref().ok_or(Error::NotReady)?;
                 unsafe {
                     open(
                         init_handle,
@@ -129,9 +126,9 @@ impl RdpSvc {
                     Error::VirtualChannel(0)
                 })?;
 
-                let rc = match self {
-                    Self::Basic { write, .. } => {
-                        let write = write.as_ref().ok_or(Error::NotReady)?;
+                let rc = match self.entrypoints {
+                    Entrypoints::Basic(ep) => {
+                        let write = ep.pVirtualChannelWrite.as_ref().ok_or(Error::NotReady)?;
 
                         write_ack.can_send.acquire();
 
@@ -142,12 +139,12 @@ impl RdpSvc {
                                 open_handle,
                                 data.as_mut_ptr().cast(),
                                 len,
-                                counter as *mut ffi::c_void,
+                                counter as headers::LPVOID,
                             )
                         }
                     }
-                    Self::Extended { write, .. } => {
-                        let write = write.as_ref().ok_or(Error::NotReady)?;
+                    Entrypoints::Extended(ep) => {
+                        let write = ep.pVirtualChannelWriteEx.as_ref().ok_or(Error::NotReady)?;
 
                         write_ack.can_send.acquire();
 
@@ -159,7 +156,7 @@ impl RdpSvc {
                                 open_handle,
                                 data.as_mut_ptr().cast(),
                                 len,
-                                counter as *mut ffi::c_void,
+                                counter as headers::LPVOID,
                             )
                         }
                     }
@@ -177,13 +174,13 @@ impl RdpSvc {
     }
 
     fn close(&mut self, init_handle: headers::LPVOID, open_handle: u32) -> Result<(), Error> {
-        let rc = match self {
-            Self::Basic { close, .. } => {
-                let close = close.as_ref().ok_or(Error::NotReady)?;
+        let rc = match self.entrypoints {
+            Entrypoints::Basic(ep) => {
+                let close = ep.pVirtualChannelClose.as_ref().ok_or(Error::NotReady)?;
                 unsafe { close(open_handle) }
             }
-            Self::Extended { close, .. } => {
-                let close = close.as_ref().ok_or(Error::NotReady)?;
+            Entrypoints::Extended(ep) => {
+                let close = ep.pVirtualChannelCloseEx.as_ref().ok_or(Error::NotReady)?;
                 unsafe { close(init_handle, open_handle) }
             }
         };
@@ -194,7 +191,26 @@ impl RdpSvc {
             Err(Error::VirtualChannel(rc))
         }
     }
+
+    fn reset_client(&mut self) {
+        if let Some(client) = self.client_mut() {
+            client.reset();
+        }
+    }
+
+    fn client(&self) -> Option<&client::Client> {
+        self.client.as_ref()
+    }
+
+    fn client_mut(&mut self) -> Option<&mut client::Client> {
+        self.client.as_mut()
+    }
 }
+
+unsafe impl Sync for RdpSvc {}
+unsafe impl Send for RdpSvc {}
+
+static TMP_RDP_SVC: sync::RwLock<Option<RdpSvc>> = sync::RwLock::new(None);
 
 fn generic_channel_init_event(
     init_handle: headers::LPVOID,
@@ -212,8 +228,8 @@ fn generic_channel_init_event(
                 counter: sync::atomic::AtomicU32::new(0),
             });
 
-            if let Some(ep) = ENTRYPOINTS.read().unwrap().as_ref() {
-                let svc = Svc::new(init_handle, ep);
+            if let Some(rsvc) = TMP_RDP_SVC.write().unwrap().take() {
+                let svc = Svc::new(init_handle, rsvc);
                 let svc = super::Svc::Rdp(svc);
 
                 super::SVC.write().unwrap().replace(svc);
@@ -375,12 +391,7 @@ extern "C" fn channel_open_event_ex(
 }
 
 #[allow(clippy::too_many_lines)]
-fn generic_virtual_channel_entry(
-    entry_points: Entrypoints,
-    init_handle: headers::PVOID,
-) -> Result<(), ()> {
-    crate::start();
-
+fn generic_virtual_channel_entry(rsvc: RdpSvc, init_handle: headers::PVOID) -> Result<(), ()> {
     let mut channel_def = headers::CHANNEL_DEF::default();
     for (i, b) in common::VIRTUAL_CHANNEL_NAME
         .to_bytes_with_nul()
@@ -403,7 +414,7 @@ fn generic_virtual_channel_entry(
     #[cfg(target_os = "windows")]
     let version_requested = headers::VIRTUAL_CHANNEL_VERSION_WIN2000;
 
-    let rc = match entry_points {
+    let rc = match rsvc.entrypoints {
         Entrypoints::Basic(ep) => {
             let mut init_handle = ptr::null_mut();
 
@@ -443,8 +454,7 @@ fn generic_virtual_channel_entry(
     };
 
     if rc == headers::CHANNEL_RC_OK {
-        let mut gep = ENTRYPOINTS.write().unwrap();
-        let _ = gep.replace(entry_points);
+        let _ = TMP_RDP_SVC.write().unwrap().replace(rsvc);
         Ok(())
     } else {
         common::error!("bad return from init: {rc}");
@@ -454,9 +464,9 @@ fn generic_virtual_channel_entry(
 
 #[unsafe(no_mangle)]
 extern "C" fn VirtualChannelEntry(entry_points: headers::PCHANNEL_ENTRY_POINTS) -> headers::BOOL {
-    match unsafe {
-        generic_virtual_channel_entry(Entrypoints::Basic(*entry_points), ptr::null_mut())
-    } {
+    crate::start();
+
+    match generic_virtual_channel_entry(RdpSvc::from(entry_points), ptr::null_mut()) {
         Ok(()) => headers::TRUE,
         Err(()) => headers::FALSE,
     }
@@ -467,9 +477,9 @@ extern "C" fn VirtualChannelEntryEx(
     entry_points: headers::PCHANNEL_ENTRY_POINTS_EX,
     init_handle: headers::PVOID,
 ) -> headers::BOOL {
-    match unsafe {
-        generic_virtual_channel_entry(Entrypoints::Extended(*entry_points), init_handle)
-    } {
+    crate::start();
+
+    match generic_virtual_channel_entry(RdpSvc::from(entry_points), init_handle) {
         Ok(()) => headers::TRUE,
         Err(()) => headers::FALSE,
     }
@@ -482,11 +492,11 @@ pub struct Svc {
 }
 
 impl Svc {
-    fn new(init_handle: headers::LPVOID, entrypoints: &Entrypoints) -> Self {
+    fn new(init_handle: headers::LPVOID, rsvc: RdpSvc) -> Self {
         Self {
             init_handle,
             open_handle: None,
-            rsvc: RdpSvc::from(entrypoints),
+            rsvc,
         }
     }
 }
@@ -521,6 +531,18 @@ impl super::SvcImplementation for Svc {
                 .close(self.init_handle, open_handle)
                 .map_err(super::Error::Rdp),
         }
+    }
+
+    fn reset_client(&mut self) {
+        self.rsvc.reset_client();
+    }
+
+    fn client(&self) -> Option<&client::Client> {
+        self.rsvc.client()
+    }
+
+    fn client_mut(&mut self) -> Option<&mut client::Client> {
+        self.rsvc.client_mut()
     }
 }
 

@@ -1,6 +1,7 @@
 use common::{api, service};
 use std::{fmt, io, net, str::FromStr, sync, thread};
 
+mod client;
 mod config;
 mod control;
 mod svc;
@@ -69,33 +70,80 @@ pub(crate) static SVC_TO_CONTROL: sync::OnceLock<crossbeam_channel::Sender<svc::
 fn svc_commander(control: &crossbeam_channel::Receiver<svc::Command>) -> Result<(), Error> {
     loop {
         match control.recv()? {
-            svc::Command::Open => {
-                if let Some(svc) = svc::SVC.write().unwrap().as_mut() {
+            svc::Command::Open => match svc::SVC.write().unwrap().as_mut() {
+                None => {
+                    common::error!("SVC not initialized");
+                }
+                Some(svc) => {
                     if let Err(e) = svc.open() {
                         common::error!("SVC open failed: {e}");
                     }
-                } else {
-                    common::error!("SVC not initialized");
                 }
-            }
-            svc::Command::SendChunk(chunk) => {
-                if let Some(svc) = svc::SVC.read().unwrap().as_ref() {
-                    if let Err(e) = svc.write(chunk.serialized()) {
-                        common::error!("SVC write failed: {e}");
+            },
+            svc::Command::Channel(channel_control) => match channel_control {
+                api::ChannelControl::SendChunk(chunk) => match svc::SVC.read().unwrap().as_ref() {
+                    None => {
+                        common::error!("SVC not initialized");
                     }
-                } else {
-                    common::error!("SVC not initialized");
-                }
-            }
-            svc::Command::Close => {
-                if let Some(svc) = svc::SVC.write().unwrap().as_mut() {
-                    if let Err(e) = svc.close() {
-                        common::error!("SVC close failed: {e}");
+                    Some(svc) => {
+                        if let Err(e) = svc.write(chunk.serialized()) {
+                            common::error!("SVC write failed: {e}");
+                        }
                     }
-                } else {
-                    common::error!("SVC not initialized");
+                },
+                api::ChannelControl::SendInputSetting(setting) => {
+                    match svc::SVC.write().unwrap().as_mut() {
+                        None => {
+                            common::error!("SVC not initialized");
+                        }
+                        Some(svc) => match svc.client_mut() {
+                            None => {
+                                common::error!("client no supported");
+                            }
+                            Some(client) => {
+                                if let Err(e) = client.set(setting) {
+                                    common::error!("input error: {e}");
+                                }
+                            }
+                        },
+                    }
                 }
-            }
+                api::ChannelControl::SendInputAction(action) => {
+                    match svc::SVC.read().unwrap().as_ref() {
+                        None => {
+                            common::error!("SVC not initialized");
+                        }
+                        Some(svc) => match svc.client() {
+                            None => {
+                                common::error!("client not supported");
+                            }
+                            Some(client) => {
+                                if let Err(e) = client.play(action) {
+                                    common::error!("input error: {e}");
+                                }
+                            }
+                        },
+                    }
+                }
+                api::ChannelControl::ResetClient => match svc::SVC.write().unwrap().as_mut() {
+                    None => {
+                        common::error!("SVC not initialized");
+                    }
+                    Some(svc) => {
+                        svc.reset_client();
+                    }
+                },
+                api::ChannelControl::Shutdown => match svc::SVC.write().unwrap().as_mut() {
+                    None => {
+                        common::error!("SVC not initialized");
+                    }
+                    Some(svc) => {
+                        if let Err(e) = svc.close() {
+                            common::error!("SVC close failed: {e}");
+                        }
+                    }
+                },
+            },
         }
     }
 }
@@ -103,7 +151,7 @@ fn svc_commander(control: &crossbeam_channel::Receiver<svc::Command>) -> Result<
 #[allow(clippy::missing_panics_doc)]
 pub fn init(
     frontend_channel: service::Channel,
-    backend_to_frontend: crossbeam_channel::Receiver<api::ChunkControl>,
+    backend_to_frontend: crossbeam_channel::Receiver<api::ChannelControl>,
 ) -> Result<(), Error> {
     let config = match config::Config::read()? {
         None => {

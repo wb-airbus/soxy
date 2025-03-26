@@ -3,6 +3,7 @@
 #![allow(clippy::cast_possible_wrap)]
 #![allow(non_snake_case)]
 
+use crate::client;
 use common::api;
 use std::{ffi, fmt, mem, ptr, slice, sync};
 
@@ -322,11 +323,18 @@ extern "C" fn ICADataArrival(
     headers::CLIENT_STATUS_SUCCESS
 }
 
-#[derive(Default)]
-pub struct Svc {}
+pub struct Svc {
+    client: Option<client::Client>,
+}
 
 unsafe impl Sync for Svc {}
 unsafe impl Send for Svc {}
+
+impl Svc {
+    fn new(client: Option<client::Client>) -> Self {
+        Self { client }
+    }
+}
 
 impl super::SvcImplementation for Svc {
     #[allow(clippy::too_many_lines)]
@@ -351,5 +359,19 @@ impl super::SvcImplementation for Svc {
     fn close(&mut self) -> Result<(), super::Error> {
         let _ = HANDLE.write().unwrap().take();
         Ok(())
+    }
+
+    fn reset_client(&mut self) {
+        if let Some(client) = self.client_mut() {
+            client.reset();
+        }
+    }
+
+    fn client(&self) -> Option<&client::Client> {
+        self.client.as_ref()
+    }
+
+    fn client_mut(&mut self) -> Option<&mut client::Client> {
+        self.client.as_mut()
     }
 }

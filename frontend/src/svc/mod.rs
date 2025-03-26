@@ -1,3 +1,4 @@
+use crate::client;
 use common::api;
 use std::{fmt, sync};
 
@@ -15,8 +16,7 @@ pub enum State {
 
 pub enum Command {
     Open,
-    SendChunk(api::Chunk),
-    Close,
+    Channel(api::ChannelControl),
 }
 
 pub enum Response {
@@ -43,6 +43,9 @@ trait SvcImplementation {
     fn open(&mut self) -> Result<(), Error>;
     fn write(&self, data: Vec<u8>) -> Result<(), Error>;
     fn close(&mut self) -> Result<(), Error>;
+    fn reset_client(&mut self);
+    fn client(&self) -> Option<&client::Client>;
+    fn client_mut(&mut self) -> Option<&mut client::Client>;
 }
 
 pub enum Svc {
@@ -69,6 +72,27 @@ impl Svc {
         match self {
             Self::Citrix(svc) => svc.close(),
             Self::Rdp(svc) => svc.close(),
+        }
+    }
+
+    pub fn reset_client(&mut self) {
+        match self {
+            Self::Citrix(svc) => svc.reset_client(),
+            Self::Rdp(svc) => svc.reset_client(),
+        }
+    }
+
+    pub fn client(&self) -> Option<&client::Client> {
+        match self {
+            Self::Citrix(svc) => svc.client(),
+            Self::Rdp(svc) => svc.client(),
+        }
+    }
+
+    pub fn client_mut(&mut self) -> Option<&mut client::Client> {
+        match self {
+            Self::Citrix(svc) => svc.client_mut(),
+            Self::Rdp(svc) => svc.client_mut(),
         }
     }
 }

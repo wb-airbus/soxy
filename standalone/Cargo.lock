@@ -178,6 +178,7 @@ dependencies = [
  "common",
  "crossbeam-channel",
  "dirs",
+ "libloading",
  "log",
  "serde",
  "toml",

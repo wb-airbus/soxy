@@ -14,6 +14,7 @@ Windows instance managed by one of the supported VDIs, while the frontend
 bridges access to backend functions by exposing VDI-side resources locally using
 a common protocol. At the time of writing, soxy provides:
 
+- a telnet-like interface to inject keystrokes ("input");
 - a bootstrap module using a PowerShell backend script ("stage0");
 - a (basic) FTP server to access the remote machine's filesystem;
 - a telnet-like interface to spawn and interact with a console/shell executed on
@@ -341,6 +342,11 @@ enabled = true
 port = 2021
 
 [[services]]
+name = "input"
+enabled = true
+port = 1081
+
+[[services]]
 name = "socks5"
 enabled = true
 #Override the listen address of this service only
@@ -351,7 +357,7 @@ port = 1080
 name = "stage0"
 #Disable this service
 enabled = false
-port = 1081
+port = 1082
 ```
 
 
@@ -412,6 +418,39 @@ Connect to `localhost:2021` on your client machine with your favorite FTP client
 to browse, upload, download files and directories accessible to the backend
 user.
 
+#### Input
+
+Connect to `localhost:1081` on your client machine with a telnet-like
+command such as `nc`, and use one of the available commands below to
+send input events. This service does not require a running backend,
+only a loaded frontend.
+
+- `delay <delay>` where `<delay>` is a integer representing an amount
+  of time in milliseconds: sets the default delay between two input
+  events;
+- `pause <delay>` where `<delay>` is a integer representing an amount
+  of time in milliseconds: waits the given amount of time before
+  sending the next input event;
+- `keydown <key>` where `<key>` in a supported keyword associated to a
+  keyboard key (see `common/src/input/frontend.rs` for available
+  keywords): presses the given keyboard key until the corresponding
+  `keyup <key>` command is emitted;
+- `key <key>` where `<key>` in a supported keyword associated to a
+  keyboard key (see `common/src/input/frontend.rs` for available
+  keywords): emulates the given key stroke (i.e. pressed then released);
+- `write <input>` (resp. `writeln <input>`) where `<input>` a
+  newline-terminated string: emulates the typing of the given text
+  input on the keyboard (resp. including a carriage return at the
+  end);
+- `cat <file path>` where `<file path>` is a path to a "text" file:
+  emulates the typing of the content of the given file on the keyboard;
+- `exit` to quit the session.
+
+In practice, the `cat` command permits to type the content of the
+`tools/stage0/stage0.ps1` script on a remote machine where the soxy
+backend is not yet deployed, and then to use the Stage0 service of
+soxy to transfer the `soxy.exe` (or `soxy.dll`) backend.
+
 #### SOCKS5 Proxy
 
 Configure on your client machine to use `localhost:1080` as a SOCKS5 proxy.
@@ -419,11 +458,18 @@ Connections will originate from the remote host.
 
 #### Stage0
 
-Connect to `localhost:1081` on your client machine with a telnet-like command
-such as `nc`, and use the available command:
+Execute the script `stage0.ps1` (which can be found in `tools/stage0`) on the remote machine:
+```powershell
+powershell.exe -ExecutionPolicy Bypass -file stage0.ps1
+```
 
-- `cat xxxx`, `push xxxx`, `put xxxx`, `send xxxx`, `upload xxxx`: sends the
-  content of the file at the provided path.
+Connect to `localhost:1082` on your client machine with a telnet-like
+command such as `nc`, and use the available commands:
+
+- `send <file path>`: sends the content of the file at the provided
+  path, it will be stored in a file named `favicon.iso` in the
+  directory where the previous script has been launched;
+- `exit` to quit the session.
 
 ## Troubleshooting
 

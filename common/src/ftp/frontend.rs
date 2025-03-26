@@ -370,7 +370,7 @@ pub(crate) fn tcp_handler<'a>(
     scope: &'a thread::Scope<'a, '_>,
     stream: net::TcpStream,
     channel: &'a service::Channel,
-) -> Result<(), io::Error> {
+) -> Result<(), api::Error> {
     let data_server = net::TcpListener::bind((server.ip, 0))?;
     let data_port = data_server.local_addr().unwrap().port();
 
