@@ -16,6 +16,8 @@ SHELL:=bash
 
 .PHONY: setup
 setup:
+	rustup toolchain add stable
+	rustup toolchain add nightly
 	echo $(TARGETS_FRONTEND) $(TARGETS_BACKEND) $(TARGETS_STANDALONE) | tr ' ' '\n' | sort -u | while read t ; do \
 		echo ; echo "# Installing toolchains and components for $$t" ; echo ; \
 		rustup target add --toolchain stable $$t ; \
