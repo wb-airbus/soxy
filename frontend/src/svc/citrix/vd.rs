@@ -229,7 +229,9 @@ extern "C" fn VdPoll(
         (None, _, _) | (_, None, _) | (_, _, None) => headers::CLIENT_ERROR,
         (Some(pVd), Some(pDllPoll), Some(puiSize)) => {
             if let Err(e) = super::DriverPoll(pVd, pDllPoll) {
-                common::error!("DriverPoll failed: {e}");
+                if e != headers::CLIENT_STATUS_ERROR_RETRY {
+                    common::error!("DriverPoll failed: {e}");
+                }
                 return e;
             }
 

@@ -74,7 +74,7 @@ impl Handle {
     }
 
     fn queue(&self, data: Vec<u8>) {
-        self.write_queue_send.try_send(data).ok();
+        self.write_queue_send.send(data).ok();
     }
 }
 
@@ -201,6 +201,11 @@ pub fn DriverInfo(vd: &headers::VD, dll_info: &mut headers::DLLINFO) -> Result<(
     }
 }
 
+// To avoid saturating completely the Citrix queue (which is
+// half-duplex) during an upload from the frontend to the backend we
+// send at most MAX_CHUNK_BATCH_SEND chunks per poll request
+const MAX_CHUNK_BATCH_SEND: usize = 8;
+
 pub fn DriverPoll(
     _vd: &mut headers::VD,
     _dll_poll: &mut headers::DLLPOLL,
@@ -216,6 +221,8 @@ pub fn DriverPoll(
         .unwrap()
         .take()
         .or_else(|| handle.write_queue_receive.try_recv().ok());
+
+    let mut batch_send = 0;
 
     loop {
         match next {
@@ -236,13 +243,21 @@ pub fn DriverPoll(
                         handle.channel_num,
                         ptr::from_mut(&mut mem).cast(),
                         1,
-                        headers::FLUSH_IMMEDIATELY,
+                        0,
                     )
                 };
 
                 match rc {
                     headers::CLIENT_STATUS_SUCCESS => {
-                        next = handle.write_queue_receive.try_recv().ok();
+                        batch_send += 1;
+
+                        if batch_send < MAX_CHUNK_BATCH_SEND {
+                            next = handle.write_queue_receive.try_recv().ok();
+                        } else if handle.write_queue_receive.is_empty() {
+                            return Ok(());
+                        } else {
+                            return Err(headers::CLIENT_STATUS_ERROR_RETRY);
+                        }
                     }
                     headers::CLIENT_ERROR_NO_OUTBUF => {
                         common::debug!("no more space, request a retry");

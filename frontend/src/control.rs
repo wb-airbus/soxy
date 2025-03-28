@@ -23,7 +23,7 @@ impl Control {
         crossbeam_channel::Sender<svc::Response>,
         crossbeam_channel::Receiver<svc::Command>,
     ) {
-        let (from_svc_sender, from_svc_receiver) = crossbeam_channel::unbounded();
+        let (from_svc_sender, from_svc_receiver) = crossbeam_channel::bounded(1);
         let (to_svc_sender, to_svc_receiver) = crossbeam_channel::bounded(TO_SVC_CHANNEL_SIZE);
         let (from_frontend_sender, from_frontend_receiver) =
             crossbeam_channel::bounded(FRONTEND_CHANNEL_SIZE);
