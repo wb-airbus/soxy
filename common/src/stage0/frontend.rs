@@ -92,6 +92,8 @@ impl Client {
                     Ok(mut file) => {
                         let mut buf = [0; api::CHUNK_LENGTH];
 
+                        let mut total = 0;
+
                         loop {
                             let read = file.read(&mut buf)?;
 
@@ -99,12 +101,14 @@ impl Client {
                                 break;
                             }
 
-                            crate::debug!("{read} bytes read");
+                            crate::trace!("{read} bytes read");
 
                             rdp.write_all(&buf[0..read])?;
+
+                            total += read;
                         }
 
-                        writeln!(client_write, "file sent")?;
+                        writeln!(client_write, "file sent ({total} bytes)")?;
                     }
                 }
             }

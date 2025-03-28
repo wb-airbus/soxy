@@ -10,6 +10,7 @@ impl service::Backend for Server {
         crate::warn!("unexpected {} connection", api::Service::Stage0);
 
         let mut buf = [0; api::CHUNK_LENGTH];
+        let mut total = 0;
 
         loop {
             let read = stream.read(&mut buf)?;
@@ -18,8 +19,12 @@ impl service::Backend for Server {
                 break;
             }
 
-            crate::debug!("{read} bytes read");
+            crate::trace!("{read} bytes read");
+
+            total += read;
         }
+
+        crate::debug!("total read {total} bytes");
 
         stream.disconnect()
     }
