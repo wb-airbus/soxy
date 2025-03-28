@@ -82,18 +82,17 @@ impl Control {
                                         self.frontend_output
                                             .send(api::ChunkControl::Chunk(chunk))?;
                                         break;
-                                    } else {
-                                        // at least one chunk, maybe more
-                                        // tmp contains the tail, i.e. what will
-                                        // not be deserialized
-                                        let mut tmp = data.split_off(len);
-                                        // tmp contains data to deserialize,
-                                        // remaining data are back in data
-                                        mem::swap(&mut tmp, &mut data);
-                                        let chunk = api::Chunk::deserialize(tmp)?;
-                                        self.frontend_output
-                                            .send(api::ChunkControl::Chunk(chunk))?;
                                     }
+
+                                    // at least one chunk, maybe more
+                                    // tmp contains the tail, i.e. what will
+                                    // not be deserialized
+                                    let mut tmp = data.split_off(len);
+                                    // tmp contains data to deserialize,
+                                    // remaining data are back in data
+                                    mem::swap(&mut tmp, &mut data);
+                                    let chunk = api::Chunk::deserialize(tmp)?;
+                                    self.frontend_output.send(api::ChunkControl::Chunk(chunk))?;
                                 }
                             }
                         }

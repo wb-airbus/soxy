@@ -126,10 +126,10 @@ impl super::Handler for Handle<'_> {
                 }
                 let err = io::Error::last_os_error();
                 return Err(super::Error::VirtualChannelWriteFailed(err));
-            } else {
-                return Ok(usize::try_from(written)
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?);
             }
+
+            return Ok(usize::try_from(written)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?);
         }
     }
 }

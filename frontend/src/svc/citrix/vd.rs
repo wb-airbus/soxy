@@ -280,8 +280,8 @@ extern "C" fn VdSetInformation(
 
             unsafe {
                 *puiSize = u16::try_from(mem::size_of::<headers::VDSETINFORMATION>())
-                    .expect("value too large")
-            };
+                    .expect("value too large");
+            }
 
             headers::CLIENT_STATUS_SUCCESS
         }
