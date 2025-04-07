@@ -20,9 +20,9 @@ setup:
 	rustup toolchain add nightly
 	echo $(TARGETS_FRONTEND) $(TARGETS_BACKEND) $(TARGETS_STANDALONE) | tr ' ' '\n' | sort -u | while read t ; do \
 		echo ; echo "# Installing toolchains and components for $$t" ; echo ; \
-		rustup target add --toolchain stable $$t ; \
-		rustup target add --toolchain nightly $$t ; \
-		rustup component add --toolchain nightly-$$t rust-src ; \
+		rustup target add --toolchain stable $$t || exit 1 ; \
+		rustup target add --toolchain nightly $$t || exit 1 ; \
+		rustup component add --toolchain nightly-$$t rust-src || exit 1 ; \
 	done
 
 .PHONY: release
@@ -89,58 +89,64 @@ distclean: clean
 build-release:
 	@for t in $(TARGETS_FRONTEND) ; do \
 		echo ; echo "# Building release frontend for $$t" ; echo ; \
-		cd frontend ; cargo build --release --features log --target $$t ; cd .. ; \
+		(cd frontend && cargo build --release --features log --target $$t && cd ..) || exit 1 ; \
 	done
 	@for t in $(TARGETS_BACKEND) ; do \
 		echo ; echo "# Building release backend library for $$t" ; echo ; \
-		cd backend ; RUSTFLAGS="$(BACKEND_RELEASE_LIB_RUST_FLAGS)" cargo +nightly build --lib --release --target $$t $(BACKEND_BUILD_FLAGS) ; cd .. ; \
+		(cd backend && RUSTFLAGS="$(BACKEND_RELEASE_LIB_RUST_FLAGS)" cargo +nightly build --lib --release --target $$t $(BACKEND_BUILD_FLAGS) && cd ..) || exit 1 ; \
 		echo ; echo "# Building release backend binary for $$t" ; echo ; \
 		FLAGS="$(BACKEND_RELEASE_BIN_RUST_FLAGS)" ; \
 		if echo $$t | grep -q windows ; then \
 			FLAGS="$(BACKEND_RELEASE_BIN_WINDOWS_RUST_FLAGS)" ; \
                 fi ; \
-		cd backend ; RUSTFLAGS="$$FLAGS" cargo +nightly build --bins --release --target $$t $(BACKEND_BUILD_FLAGS) ; cd .. ; \
+		(cd backend && RUSTFLAGS="$$FLAGS" cargo +nightly build --bins --release --target $$t $(BACKEND_BUILD_FLAGS) && cd ..) ; \
 	done
 	@for t in $(TARGETS_STANDALONE) ; do \
 		echo ; echo "# Building release standalone for $$t" ; echo ; \
-		cd standalone ; cargo build --release --features log --target $$t ; cd .. ; \
+		(cd standalone && cargo build --release --features log --target $$t && cd ..) || exit 1 ; \
 	done
 
 .PHONY: build-debug
 build-debug:
 	@for t in $(TARGETS_FRONTEND) ; do \
 		echo ; echo "# Building debug frontend for $$t" ; echo ; \
-		cd frontend ; cargo build --features log --target $$t ; cd .. ; \
+		(cd frontend && cargo build --features log --target $$t && cd ..) || exit 1 ; \
 	done
 	@for t in $(TARGETS_BACKEND) ; do \
 		echo ; echo "# Building debug backend library for $$t" ; echo ; \
-		cd backend ; cargo build --lib --features log --target $$t ; cd .. ; \
+		(cd backend && cargo build --lib --features log --target $$t && cd ..) || exit 1 ; \
 		echo ; echo "# Building debug backend binary for $$t" ; echo ; \
-		cd backend ; cargo build --bins --features log --target $$t ; cd .. ; \
+		(cd backend && cargo build --bins --features log --target $$t && cd ..) || exit 1 ; \
 	done
 	@for t in $(TARGETS_STANDALONE) ; do \
 		echo ; echo "# Building debug standalone for $$t" ; echo ; \
-		cd standalone ; cargo build --features log --target $$t ; cd .. ; \
+		(cd standalone && cargo build --features log --target $$t && cd ..) || exit 1 ; \
 	done
 
 #############
 
 .PHONY: clippy
 clippy:
-	@for t in i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu ; do \
-		for c in common frontend backend standalone ; do \
-			echo ; echo "# Clippy on $$c for $$t" ; echo ; \
-			cd $$c ; cargo $@ --target $$t ; cd .. ; \
-		done ; \
+	@for t in $(TARGETS_FRONTEND) ; do \
+		echo ; echo "# Clippy on frontend for $$t" ; echo ; \
+		(cd frontend && cargo $@ --target $$t && cd ..) || exit 1 ; \
+	done
+	@for t in $(TARGETS_BACKEND) ; do \
+		echo ; echo "# Clippy on backend for $$t" ; echo ; \
+		(cd backend && cargo $@ --target $$t && cd ..) || exit 1 ; \
+	done
+	@for t in $(TARGETS_STANDALONE) ; do \
+		echo ; echo "# Clippy on standalone for $$t" ; echo ; \
+		(cd standalone && cargo $@ --target $$t && cd ..) || exit 1 ; \
 	done
 
 .PHONY: cargo-fmt
 cargo-fmt:
-	for c in common frontend backend standalone ; do \
-		cd $$c ; $@ ; cd .. ; \
+	@for c in common frontend backend standalone ; do \
+		(cd $$c && $@ && cd ..) || exit 1 ; \
 	done
 
 %:
-	for c in common frontend backend standalone ; do \
-		cd $$c ; cargo $@ ; cd .. ; \
+	@for c in common frontend backend standalone ; do \
+		(cd $$c && cargo $@ && cd ..) || exit 1 ; \
 	done
