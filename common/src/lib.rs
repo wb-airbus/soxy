@@ -3,7 +3,6 @@ use std::ffi;
 use std::{env, fs};
 
 pub mod api;
-pub mod log;
 pub mod service;
 
 pub mod clipboard;
@@ -11,6 +10,9 @@ pub mod command;
 pub mod ftp;
 pub mod socks5;
 pub mod stage0;
+
+mod log;
+mod util;
 
 pub const VIRTUAL_CHANNEL_NAME: &ffi::CStr = c"SOXY";
 
