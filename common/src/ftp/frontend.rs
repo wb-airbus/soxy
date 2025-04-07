@@ -330,7 +330,7 @@ impl Client {
             } else {
                 crate::debug!("stopped");
                 status = true;
-            };
+            }
             let client = client.into_inner();
             let _ = client.shutdown(net::Shutdown::Both);
         } else {
@@ -342,7 +342,7 @@ impl Client {
             } else {
                 crate::debug!("stopped");
                 status = true;
-            };
+            }
             let _ = client.flush();
             if let Ok(client) = client.into_inner() {
                 let _ = client.shutdown(net::Shutdown::Both);
