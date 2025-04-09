@@ -15,13 +15,13 @@ bridges access to backend functions by exposing VDI-side resources locally using
 a common protocol. At the time of writing, soxy provides:
 
 - a bootstrap module using a PowerShell backend script ("stage0");
-- a (basic) FTP server to access the virtual machine's filesystem;
+- a (basic) FTP server to access the remote machine's filesystem;
 - a telnet-like interface to spawn and interact with a console/shell executed on
-  the virtual machine;
-- a telnet-like interface to read/write the Windows clipboard of the virtual
+  the remote machine;
+- a telnet-like interface to read/write the clipboard of the remote
   machine;
 - a SOCKS5 proxy which permits to open connections on client's side as if it was
-  opened in the virtual machine.
+  opened in the remote machine.
 
 soxy is a more stable, complete and modular alternative to existing tools such
 as [SocksOverRDP](https://github.com/nccgroup/SocksOverRDP),
