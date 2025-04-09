@@ -1,14 +1,15 @@
 use std::io;
 
 const ID_READ: u8 = 0x0;
-const ID_WRITE: u8 = 0x1;
+const ID_WRITE_TEXT: u8 = 0x1;
 
 pub enum Command {
     Read,
-    Write(String),
+    WriteText(Vec<u8>),
 }
 
 impl Command {
+    #[cfg(feature = "frontend")]
     pub(crate) fn send<W>(&self, stream: &mut W) -> Result<(), io::Error>
     where
         W: io::Write,
@@ -19,19 +20,20 @@ impl Command {
                 buf[0] = ID_READ;
                 stream.write_all(&buf)?;
             }
-            Self::Write(s) => {
+            Self::WriteText(d) => {
                 let mut buf = [0u8; 1];
-                buf[0] = ID_WRITE;
+                buf[0] = ID_WRITE_TEXT;
                 stream.write_all(&buf)?;
 
-                let len = s.len();
+                let len = d.len();
                 stream.write_all(&len.to_le_bytes())?;
-                stream.write_all(s.as_bytes())?;
+                stream.write_all(d)?;
             }
         }
         stream.flush()
     }
 
+    #[cfg(feature = "backend")]
     pub(crate) fn receive<R>(stream: &mut R) -> Result<Self, io::Error>
     where
         R: io::Read,
@@ -41,7 +43,7 @@ impl Command {
 
         match buf[0] {
             ID_READ => Ok(Self::Read),
-            ID_WRITE => {
+            ID_WRITE_TEXT => {
                 let mut buf = [0u8; 8];
                 stream.read_exact(&mut buf)?;
                 let len = u64::from_le_bytes(buf);
@@ -51,9 +53,7 @@ impl Command {
                 let mut buf = vec![0u8; len];
                 stream.read_exact(&mut buf)?;
 
-                let value = String::from_utf8_lossy(&buf).to_string();
-
-                Ok(Self::Write(value))
+                Ok(Self::WriteText(Vec::from(buf)))
             }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -63,30 +63,31 @@ impl Command {
     }
 }
 
-const ID_CLIPBOARD: u8 = 0x0;
+const ID_TEXT: u8 = 0x0;
 const ID_FAILED: u8 = 0x1;
 const ID_WRITE_DONE: u8 = 0x2;
 
 pub enum Response {
-    Clipboard(String),
+    Text(Vec<u8>),
     Failed,
     WriteDone,
 }
 
 impl Response {
+    #[cfg(feature = "backend")]
     pub(crate) fn send<W>(&self, stream: &mut W) -> Result<(), io::Error>
     where
         W: io::Write,
     {
         match self {
-            Self::Clipboard(s) => {
+            Self::Text(s) => {
                 let mut buf = [0u8; 1];
-                buf[0] = ID_CLIPBOARD;
+                buf[0] = ID_TEXT;
                 stream.write_all(&buf)?;
 
                 let len = s.len();
                 stream.write_all(&len.to_le_bytes())?;
-                stream.write_all(s.as_bytes())?;
+                stream.write_all(s)?;
             }
             Self::Failed => {
                 let mut buf = [0u8; 1];
@@ -102,6 +103,7 @@ impl Response {
         stream.flush()
     }
 
+    #[cfg(feature = "frontend")]
     pub(crate) fn receive<R>(stream: &mut R) -> Result<Self, io::Error>
     where
         R: io::Read,
@@ -110,7 +112,7 @@ impl Response {
         stream.read_exact(&mut buf)?;
 
         match buf[0] {
-            ID_CLIPBOARD => {
+            ID_TEXT => {
                 let mut buf = [0u8; 8];
                 stream.read_exact(&mut buf)?;
                 let len = u64::from_le_bytes(buf);
@@ -120,9 +122,7 @@ impl Response {
                 let mut buf = vec![0u8; len];
                 stream.read_exact(&mut buf)?;
 
-                let value = String::from_utf8_lossy(&buf).to_string();
-
-                Ok(Self::Clipboard(value))
+                Ok(Self::Text(Vec::from(buf)))
             }
             ID_FAILED => Ok(Self::Failed),
             ID_WRITE_DONE => Ok(Self::WriteDone),

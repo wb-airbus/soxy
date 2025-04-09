@@ -1,10 +1,7 @@
-use common::{
-    api, clipboard, command, ftp,
-    service::{self, Frontend},
-    socks5, stage0,
-};
-use std::{fmt, io, net, sync, thread};
+use common::{api, service};
+use std::{fmt, io, net, str::FromStr, sync, thread};
 
+mod config;
 mod control;
 mod svc;
 #[cfg(target_os = "windows")]
@@ -12,6 +9,7 @@ mod windows;
 
 pub enum Error {
     Api(api::Error),
+    Config(config::Error),
     Io(io::Error),
     PipelineBroken,
     Svc(svc::Error),
@@ -21,6 +19,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
             Self::Api(e) => write!(f, "API error: {e}"),
+            Self::Config(e) => write!(f, "configuration error: {e}"),
             Self::Io(e) => write!(f, "I/O error: {e}"),
             Self::PipelineBroken => write!(f, "broken pipeline"),
             Self::Svc(e) => write!(f, "virtual channel error: {e}"),
@@ -31,6 +30,12 @@ impl fmt::Display for Error {
 impl From<api::Error> for Error {
     fn from(e: api::Error) -> Self {
         Self::Api(e)
+    }
+}
+
+impl From<config::Error> for Error {
+    fn from(e: config::Error) -> Self {
+        Self::Config(e)
     }
 }
 
@@ -100,96 +105,63 @@ pub fn init(
     frontend_channel: service::Channel,
     backend_to_frontend: crossbeam_channel::Receiver<api::ChunkControl>,
 ) -> Result<(), Error> {
-    common::init_logs(true, None);
+    let config = match config::Config::read()? {
+        None => {
+            let config = config::Config::default();
+            config.save()?;
+            config
+        }
+        Some(config) => config,
+    };
+
+    common::init_logs(config.log_level(), config.log_file());
 
     common::debug!("initializing frontend");
 
-    let from_tcp_clipboard =
-        net::SocketAddr::new(net::IpAddr::V4(net::Ipv4Addr::new(127, 0, 0, 1)), 3032);
-    //let timeout_clipboard = None;
-    let mut server_clipboard = clipboard::frontend::Server::bind(from_tcp_clipboard)?;
+    let servers = config.services.into_iter().filter(|s| s.enabled).try_fold(
+        vec![],
+        |mut servers, service| {
+            let ip = net::IpAddr::from_str(&service.ip.unwrap_or(config.ip.clone()))
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+            let port = service.port;
+            let service = service::lookup(service.name.as_str())
+                .ok_or(Error::Config(config::Error::UnknownService(service.name)))?;
+            let port = port
+                .or(service
+                    .tcp_frontend()
+                    .map(service::TcpFrontend::default_port))
+                .ok_or(Error::Config(config::Error::UnknownService(
+                    service.name().to_string(),
+                )))?;
 
-    let from_tcp_command =
-        net::SocketAddr::new(net::IpAddr::V4(net::Ipv4Addr::new(127, 0, 0, 1)), 3031);
-    //let timeout_command = None;
-    let mut server_command = command::frontend::Server::bind(from_tcp_command)?;
+            let sockaddr = net::SocketAddr::new(ip, port);
+            let server = common::service::TcpFrontendServer::bind(service, sockaddr)?;
 
-    let from_tcp_ftp =
-        net::SocketAddr::new(net::IpAddr::V4(net::Ipv4Addr::new(127, 0, 0, 1)), 2021);
-    //let timeout_ftp = None;
-    let mut server_ftp = ftp::frontend::Server::bind(from_tcp_ftp)?;
+            servers.push(server);
 
-    let from_tcp_socks5 =
-        net::SocketAddr::new(net::IpAddr::V4(net::Ipv4Addr::new(127, 0, 0, 1)), 1080);
-    //let timeout_socks5 = None;
-    let mut server_socks5 = socks5::frontend::Server::bind(from_tcp_socks5)?;
-
-    let from_tcp_stage0 =
-        net::SocketAddr::new(net::IpAddr::V4(net::Ipv4Addr::new(127, 0, 0, 1)), 1081);
-    //let timeout_stage0 = None;
-    let mut server_stage0 = stage0::frontend::Server::bind(from_tcp_stage0)?;
+            Ok::<_, Error>(servers)
+        },
+    )?;
 
     thread::Builder::new()
         .name("frontend".into())
         .spawn(move || {
             thread::scope(|scope| {
-                thread::Builder::new()
-                    .name(format!("{}", api::Service::Clipboard))
-                    .spawn_scoped(scope, || {
-                        if let Err(e) = server_clipboard.start(&frontend_channel) {
-                            common::error!("{} error: {e}", api::Service::Clipboard);
-                        } else {
-                            common::debug!("{} terminated", api::Service::Clipboard);
-                        }
-                    })
-                    .unwrap();
-
-                thread::Builder::new()
-                    .name(format!("{}", api::Service::Command))
-                    .spawn_scoped(scope, || {
-                        if let Err(e) = server_command.start(&frontend_channel) {
-                            common::error!("{} error: {e}", api::Service::Command);
-                        } else {
-                            common::debug!("{} terminated", api::Service::Command);
-                        }
-                    })
-                    .unwrap();
-
-                thread::Builder::new()
-                    .name(format!("{}", api::Service::Ftp))
-                    .spawn_scoped(scope, || {
-                        if let Err(e) = server_ftp.start(&frontend_channel) {
-                            common::error!("{} error: {e}", api::Service::Ftp);
-                        } else {
-                            common::debug!("{} terminated", api::Service::Ftp);
-                        }
-                    })
-                    .unwrap();
-
-                thread::Builder::new()
-                    .name(format!("{}", api::Service::Socks5))
-                    .spawn_scoped(scope, || {
-                        if let Err(e) = server_socks5.start(&frontend_channel) {
-                            common::error!("{} error: {e}", api::Service::Socks5);
-                        } else {
-                            common::debug!("{} terminated", api::Service::Socks5);
-                        }
-                    })
-                    .unwrap();
-
-                thread::Builder::new()
-                    .name(format!("{}", api::Service::Stage0))
-                    .spawn_scoped(scope, || {
-                        if let Err(e) = server_stage0.start(&frontend_channel) {
-                            common::error!("{} error: {e}", api::Service::Stage0);
-                        } else {
-                            common::debug!("{} terminated", api::Service::Stage0);
-                        }
-                    })
-                    .unwrap();
+                for server in &servers {
+                    thread::Builder::new()
+                        .name(server.service().name().to_string())
+                        .spawn_scoped(scope, || {
+                            if let Err(e) = server.start(&frontend_channel) {
+                                common::error!("{} error: {e}", server.service().name());
+                            } else {
+                                common::debug!("{} terminated", server.service().name());
+                            }
+                        })
+                        .unwrap();
+                }
 
                 if let Err(e) =
-                    frontend_channel.start(api::ServiceKind::Frontend, &backend_to_frontend)
+                    frontend_channel.start(service::Kind::Frontend, &backend_to_frontend)
                 {
                     common::error!("frontend error: {e}");
                 } else {

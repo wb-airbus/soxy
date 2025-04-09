@@ -119,7 +119,10 @@ fn rdp_unregister() {
 extern "system" fn DllRegisterServer() -> ws::core::HRESULT {
     unsafe { ws::Win32::System::Console::AllocConsole() };
 
-    common::init_logs(false, None);
+    #[cfg(debug_assertions)]
+    common::init_logs(common::Level::Debug, None);
+    #[cfg(not(debug_assertions))]
+    common::init_logs(common::Level::Info, None);
 
     let mut is_ok = true;
 
@@ -149,7 +152,10 @@ extern "system" fn DllRegisterServer() -> ws::core::HRESULT {
 extern "system" fn DllUnregisterServer() -> ws::core::HRESULT {
     unsafe { ws::Win32::System::Console::AllocConsole() };
 
-    common::init_logs(false, None);
+    #[cfg(debug_assertions)]
+    common::init_logs(common::Level::Debug, None);
+    #[cfg(not(debug_assertions))]
+    common::init_logs(common::Level::Info, None);
 
     rdp_unregister();
 

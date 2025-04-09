@@ -20,6 +20,7 @@ pub enum DataCommand {
 }
 
 impl DataCommand {
+    #[cfg(feature = "frontend")]
     pub(crate) const fn is_ftp_control(&self) -> bool {
         match self {
             Self::Dele(_) | Self::Cwd(_) | Self::Size(_) => true,
@@ -27,10 +28,12 @@ impl DataCommand {
         }
     }
 
+    #[cfg(feature = "frontend")]
     pub(crate) const fn is_upload(&self) -> bool {
         matches!(self, Self::Stor(_))
     }
 
+    #[cfg(feature = "frontend")]
     pub(crate) fn send<W>(&self, stream: &mut W) -> Result<(), io::Error>
     where
         W: io::Write,
@@ -53,6 +56,7 @@ impl DataCommand {
         stream.flush()
     }
 
+    #[cfg(feature = "backend")]
     pub(crate) fn receive<R>(stream: &mut R) -> Result<Self, io::Error>
     where
         R: io::Read,
@@ -98,6 +102,7 @@ impl fmt::Display for DataCommand {
     }
 }
 
+#[cfg(feature = "frontend")]
 const ID_DATA_TRANSFER_OK: u8 = 0x0;
 const ID_CWD_OK: u8 = 0x1;
 const ID_SIZE_OK: u8 = 0x2;
@@ -106,6 +111,7 @@ const ID_KO: u8 = 0x4;
 
 #[derive(Debug)]
 pub enum DataReply {
+    #[cfg(feature = "frontend")]
     DataTransferOk,
     CwdOk,
     SizeOk(u64),
@@ -114,6 +120,7 @@ pub enum DataReply {
 }
 
 impl DataReply {
+    #[cfg(feature = "frontend")]
     pub(crate) const fn is_ok(&self) -> bool {
         match self {
             Self::DataTransferOk | Self::CwdOk | Self::SizeOk(_) | Self::DeleteOk => true,
@@ -121,11 +128,13 @@ impl DataReply {
         }
     }
 
+    #[cfg(feature = "backend")]
     pub(crate) fn send<W>(&self, stream: &mut W) -> Result<(), io::Error>
     where
         W: io::Write,
     {
         let (code, value) = match self {
+            #[cfg(feature = "frontend")]
             Self::DataTransferOk => (ID_DATA_TRANSFER_OK, None),
             Self::CwdOk => (ID_CWD_OK, None),
             Self::SizeOk(size) => (ID_SIZE_OK, Some(size)),
@@ -142,6 +151,7 @@ impl DataReply {
         stream.flush()
     }
 
+    #[cfg(feature = "frontend")]
     pub(crate) fn receive<R>(stream: &mut R) -> Result<Self, io::Error>
     where
         R: io::Read,
@@ -151,6 +161,7 @@ impl DataReply {
         let code = buf[0];
 
         match code {
+            #[cfg(feature = "frontend")]
             ID_DATA_TRANSFER_OK => Ok(Self::DataTransferOk),
             ID_CWD_OK => Ok(Self::CwdOk),
             ID_SIZE_OK => {
@@ -169,6 +180,7 @@ impl DataReply {
 impl fmt::Display for DataReply {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            #[cfg(feature = "frontend")]
             Self::DataTransferOk => write!(f, "data transfer ok"),
             Self::CwdOk => write!(f, "change directory ok"),
             Self::SizeOk(size) => write!(f, "size ok ({size})"),

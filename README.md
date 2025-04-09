@@ -121,9 +121,15 @@ the `Makefile`. It is possible to enable only the build of artifcats needed
 by editing the three following variables at the beginning of the `Makefile`.
 
 ```Makefile
-TARGETS_FRONTEND:=i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
-TARGETS_BACKEND:=i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
-TARGETS_STANDALONE:=i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
+TARGETS_FRONTEND ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
+TARGETS_BACKEND ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
+TARGETS_STANDALONE ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
+```
+
+It is also possible to override the default enabled platforms from the command line, e.g.:
+
+```bash
+TARGETS_FRONTEND=x86_64-unknown-linux-gnu TARGETS_BACKEND=x86_64-pc-windows-gnu TARGETS_STANDALONE= make debug
 ```
 
 The `Makefile` contains three main targets:
@@ -295,6 +301,59 @@ To uninstall:
 ```bash
 regsvr32.exe /u soxy.dll
 ```
+
+#### Configuration file
+
+When the `frontend` of soxy starts, it will look for a configuration
+file at `$HOME/.config/soxy.toml` on Linux and macOS and at
+`{FOLDERID_Profile}/soxy.toml` on Windows. If no configuration file is
+found, it will be created with default values. Here is a complete
+example of configuration file:
+
+```toml
+#Default listen address for services. It can be overridden per service.
+#Use "::1" to listen both on IPv4 and IPv6 on localhost.
+#Use "::0" to listen both on IPv4 and IPv6 on all interfaces.
+#Default value is "::1".
+ip = "::1"
+
+[log]
+#Logging level: "OFF" or "ERROR" or "WARN" or "INFO" or "DEBUG" or "TRACE".
+#Default value is "DEBUG" in debug targets and "INFO" in release targets.
+level = "DEBUG"
+
+#Default is to enable all available services on the global listen IP
+#address and default ports.
+
+[[services]]
+name = "clipboard"
+enabled = true
+port = 3032
+
+[[services]]
+name = "command"
+enabled = true
+port = 3031
+
+[[services]]
+name = "ftp"
+enabled = true
+port = 2021
+
+[[services]]
+name = "socks5"
+enabled = true
+#Override the listen address of this service only
+ip = "::0"
+port = 1080
+
+[[services]]
+name = "stage0"
+#Disable this service
+enabled = false
+port = 1081
+```
+
 
 ### 🔌 Backend Installation
 

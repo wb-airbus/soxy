@@ -1,53 +1,60 @@
 use super::protocol;
 use crate::service;
-use std::io;
+use copyrs::Clipboard;
+use std::{borrow, io};
 
-pub struct Server {}
+pub(crate) fn handler(mut stream: service::RdpStream<'_>) -> Result<(), io::Error> {
+    crate::debug!("starting");
 
-impl service::Backend for Server {
-    fn accept(mut stream: service::RdpStream<'_>) -> Result<(), io::Error> {
-        crate::debug!("starting");
+    loop {
+        let cmd = protocol::Command::receive(&mut stream)?;
 
-        loop {
-            let cmd = protocol::Command::receive(&mut stream)?;
+        match cmd {
+            protocol::Command::Read => {
+                crate::debug!("read");
 
-            match cmd {
-                protocol::Command::Read => {
-                    crate::debug!("read");
-
-                    #[cfg(not(target_os = "windows"))]
-                    {
+                match copyrs::clipboard() {
+                    Err(e) => {
+                        crate::error!("failed to get clipboard: {e}");
                         protocol::Response::Failed.send(&mut stream)?;
                     }
-
-                    #[cfg(target_os = "windows")]
-                    {
-                        match clipboard_win::get_clipboard_string() {
-                            Err(e) => {
-                                crate::error!("failed to get clipboard: {e}");
+                    Ok(clipboard) => match clipboard.get_content() {
+                        Err(e) => {
+                            crate::error!("failed to get clipboard content: {e}");
+                            protocol::Response::Failed.send(&mut stream)?;
+                        }
+                        Ok(content) => match content.kind {
+                            copyrs::ClipboardContentKind::Image => {
+                                crate::error!("clipboard contrent is an image, not text");
                                 protocol::Response::Failed.send(&mut stream)?;
                             }
-                            Ok(s) => protocol::Response::Clipboard(s).send(&mut stream)?,
-                        }
-                    }
+                            copyrs::ClipboardContentKind::Text => {
+                                protocol::Response::Text(content.data).send(&mut stream)?;
+                            }
+                        },
+                    },
                 }
+            }
 
-                protocol::Command::Write(value) => {
-                    crate::debug!("write {value:?}");
+            protocol::Command::WriteText(value) => {
+                crate::debug!("write_text {value:?}");
 
-                    #[cfg(not(target_os = "windows"))]
-                    {
+                match copyrs::clipboard() {
+                    Err(e) => {
+                        crate::error!("failed to get clipboard: {e}");
                         protocol::Response::Failed.send(&mut stream)?;
                     }
+                    Ok(mut clipboard) => {
+                        let value = borrow::Cow::Borrowed(value.as_slice());
 
-                    #[cfg(target_os = "windows")]
-                    {
-                        match clipboard_win::set_clipboard_string(&value) {
+                        match clipboard.set_content(value, copyrs::ClipboardContentKind::Text) {
                             Err(e) => {
                                 crate::error!("failed to set clipboard: {e}");
                                 protocol::Response::Failed.send(&mut stream)?;
                             }
-                            Ok(()) => protocol::Response::WriteDone.send(&mut stream)?,
+                            Ok(()) => {
+                                protocol::Response::WriteDone.send(&mut stream)?;
+                            }
                         }
                     }
                 }

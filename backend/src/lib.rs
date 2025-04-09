@@ -223,7 +223,7 @@ fn main_res() -> Result<(), Error> {
         .name("backend".into())
         .spawn(move || {
             if let Err(e) =
-                backend_channel.start(api::ServiceKind::Backend, &frontend_to_backend_receive)
+                backend_channel.start(service::Kind::Backend, &frontend_to_backend_receive)
             {
                 common::error!("error: {e}");
             } else {
@@ -256,8 +256,8 @@ fn main_res() -> Result<(), Error> {
     })
 }
 
-pub fn main(level: Option<common::Level>) {
-    common::init_logs(false, level);
+pub fn main(level: common::Level) {
+    common::init_logs(level, None);
 
     common::debug!("starting up");
 
@@ -293,7 +293,12 @@ pub unsafe extern "system" fn DllMain(
         ws::Win32::System::SystemServices::DLL_PROCESS_ATTACH => unsafe {
             ws::Win32::System::LibraryLoader::DisableThreadLibraryCalls(dll_module);
             ws::Win32::System::Console::AllocConsole();
-            thread::spawn(|| main(None));
+            thread::spawn(|| {
+                #[cfg(debug_assertions)]
+                main(common::Level::Debug);
+                #[cfg(not(debug_assertions))]
+                main(common::Level::Info);
+            });
         },
         ws::Win32::System::SystemServices::DLL_PROCESS_DETACH => {}
         _ => (),

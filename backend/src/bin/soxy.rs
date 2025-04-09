@@ -1,3 +1,6 @@
 fn main() {
-    soxy::main(None);
+    #[cfg(debug_assertions)]
+    soxy::main(common::Level::Debug);
+    #[cfg(not(debug_assertions))]
+    soxy::main(common::Level::Info);
 }

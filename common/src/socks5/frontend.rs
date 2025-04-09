@@ -1,13 +1,12 @@
 use super::protocol;
-use crate::{api, service};
+use crate::service;
 use std::{
     fmt,
     io::{self, Read, Write},
     net, thread,
 };
 
-const SERVICE: api::Service = api::Service::Socks5;
-const SERVICE_KIND: api::ServiceKind = api::ServiceKind::Frontend;
+const SERVICE_KIND: service::Kind = service::Kind::Frontend;
 
 #[derive(Debug)]
 enum Error {
@@ -49,181 +48,141 @@ impl fmt::Display for Error {
     }
 }
 
-pub struct Server {
-    server: net::TcpListener,
-    server_ip: net::IpAddr,
-}
+fn handshake(stream: &mut net::TcpStream) -> Result<protocol::Command, Error> {
+    // client greeting
+    let mut buf = [0; 2];
+    stream.read_exact(&mut buf)?;
 
-impl Server {
-    const fn accept(&self, stream: net::TcpStream) -> Client {
-        Client::new(stream, self.server_ip)
-    }
-}
-
-impl service::Frontend for Server {
-    fn bind(tcp: net::SocketAddr) -> Result<Self, io::Error> {
-        let server = net::TcpListener::bind(tcp)?;
-        crate::info!("accepting {SERVICE} clients on {}", server.local_addr()?);
-        let server_ip = server.local_addr()?.ip();
-        Ok(Self { server, server_ip })
+    // client version ?
+    if buf[0] != protocol::VERSION {
+        return Err(Error::UnsupportedVersion(buf[0]));
     }
 
-    fn start(&mut self, channel: &service::Channel) -> Result<(), io::Error> {
-        thread::scope(|scope| {
-            loop {
-                let (client, client_addr) = self.server.accept()?;
+    let nb_auth = buf[1];
 
-                crate::debug!("new client {client_addr}");
+    // client proposed authentication methods
+    let mut buf = vec![0; nb_auth as usize];
+    stream.read_exact(&mut buf)?;
 
-                let client = self.accept(client);
+    // server supports only 0x0 NO AUTHENTICATION
+    if !buf.into_iter().any(|b| b == protocol::AUTHENTICATION_NONE) {
+        return Err(Error::UnsupportedAuthentication(
+            protocol::AUTHENTICATION_NONE,
+        ));
+    }
 
-                thread::Builder::new()
-                    .name(format!("{SERVICE_KIND} {SERVICE} {client_addr}"))
-                    .spawn_scoped(scope, move || {
-                        if let Err(e) = client.start(channel) {
-                            crate::error!("error: {e}");
-                        }
-                    })?;
+    // server proposes NO AUTHENTICATION
+    let buf = [protocol::VERSION, protocol::AUTHENTICATION_NONE];
+    stream.write_all(&buf)?;
+    stream.flush()?;
+
+    Ok(protocol::Command::read(stream)?)
+}
+
+fn command_connect(
+    mut stream: net::TcpStream,
+    mut client_rdp: service::RdpStream<'_>,
+) -> Result<(), io::Error> {
+    let resp = protocol::Response::receive(&mut client_rdp)?;
+    resp.answer_to_client(&mut stream)?;
+
+    if !resp.is_ok() {
+        let _ = stream.shutdown(net::Shutdown::Both);
+        return Ok(());
+    }
+
+    service::double_stream_copy(SERVICE_KIND, &super::SERVICE, client_rdp, stream)
+}
+
+fn command_bind(
+    mut stream: net::TcpStream,
+    mut client_rdp: service::RdpStream<'_>,
+) -> Result<(), io::Error> {
+    // for the bind operation on the backend
+    let resp = protocol::Response::receive(&mut client_rdp)?;
+    resp.answer_to_client(&mut stream)?;
+
+    if !resp.is_ok() {
+        let _ = stream.shutdown(net::Shutdown::Both);
+        return Ok(());
+    }
+
+    // waiting for the connection of a client to the bounded port on the backend
+    let resp = protocol::Response::receive(&mut client_rdp)?;
+    resp.answer_to_client(&mut stream)?;
+
+    if !resp.is_ok() {
+        let _ = stream.shutdown(net::Shutdown::Both);
+        return Ok(());
+    }
+
+    service::double_stream_copy(SERVICE_KIND, &super::SERVICE, client_rdp, stream)
+}
+
+pub(crate) fn tcp_handler(
+    _server: &service::TcpFrontendServer,
+    _scope: &thread::Scope,
+    mut stream: net::TcpStream,
+    channel: &service::Channel,
+) -> Result<(), io::Error> {
+    match handshake(&mut stream) {
+        Err(e) => match e {
+            Error::Io(e) => Err(e),
+            Error::UnsupportedVersion(_) => {
+                let buf = [protocol::VERSION, 0xFF];
+                stream.write_all(&buf)?;
+                stream.flush()?;
+                Ok(())
             }
-        })
-    }
-}
+            Error::UnsupportedAuthentication(_) => {
+                let buf = [protocol::VERSION, 0xFF];
+                stream.write_all(&buf)?;
+                stream.flush()?;
+                Ok(())
+            }
+            Error::UnsupportedCommand(_) => {
+                let buf = [
+                    protocol::VERSION,
+                    0x07,
+                    0x00,
+                    0x01,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                ];
+                stream.write_all(&buf)?;
+                stream.flush()?;
+                Ok(())
+            }
+            Error::AddressTypeNotSupported(_) => {
+                let buf = [
+                    protocol::VERSION,
+                    0x08,
+                    0x00,
+                    0x01,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                ];
+                stream.write_all(&buf)?;
+                stream.flush()?;
+                Ok(())
+            }
+        },
+        Ok(command) => {
+            let mut client_rdp = channel.connect(&super::SERVICE)?;
 
-struct Client {
-    stream: net::TcpStream,
-    //server_ip: net::IpAddr,
-}
+            command.send(&mut client_rdp)?;
 
-impl Client {
-    const fn new(stream: net::TcpStream, _server_ip: net::IpAddr) -> Self {
-        Self { stream } //, server_ip }
-    }
-
-    fn handshake(&mut self) -> Result<protocol::Command, Error> {
-        // client greeting
-        let mut buf = [0; 2];
-        self.stream.read_exact(&mut buf)?;
-
-        // client version ?
-        if buf[0] != protocol::VERSION {
-            return Err(Error::UnsupportedVersion(buf[0]));
-        }
-
-        let nb_auth = buf[1];
-
-        // client proposed authentication methods
-        let mut buf = vec![0; nb_auth as usize];
-        self.stream.read_exact(&mut buf)?;
-
-        // server supports only 0x0 NO AUTHENTICATION
-        if !buf.into_iter().any(|b| b == protocol::AUTHENTICATION_NONE) {
-            return Err(Error::UnsupportedAuthentication(
-                protocol::AUTHENTICATION_NONE,
-            ));
-        }
-
-        // server proposes NO AUTHENTICATION
-        let buf = [protocol::VERSION, protocol::AUTHENTICATION_NONE];
-        self.stream.write_all(&buf)?;
-        self.stream.flush()?;
-
-        Ok(protocol::Command::read(&mut self.stream)?)
-    }
-
-    fn command_connect(mut self, mut client_rdp: service::RdpStream<'_>) -> Result<(), io::Error> {
-        let resp = protocol::Response::receive(&mut client_rdp)?;
-        resp.answer_to_client(&mut self.stream)?;
-
-        if !resp.is_ok() {
-            let _ = self.stream.shutdown(net::Shutdown::Both);
-            return Ok(());
-        }
-
-        service::double_stream_copy(SERVICE_KIND, SERVICE, client_rdp, self.stream)
-    }
-
-    fn command_bind(mut self, mut client_rdp: service::RdpStream<'_>) -> Result<(), io::Error> {
-        // for the bind operation on the backend
-        let resp = protocol::Response::receive(&mut client_rdp)?;
-        resp.answer_to_client(&mut self.stream)?;
-
-        if !resp.is_ok() {
-            let _ = self.stream.shutdown(net::Shutdown::Both);
-            return Ok(());
-        }
-
-        // waiting for the connection of a client to the bounded port on the backend
-        let resp = protocol::Response::receive(&mut client_rdp)?;
-        resp.answer_to_client(&mut self.stream)?;
-
-        if !resp.is_ok() {
-            let _ = self.stream.shutdown(net::Shutdown::Both);
-            return Ok(());
-        }
-
-        service::double_stream_copy(SERVICE_KIND, SERVICE, client_rdp, self.stream)
-    }
-
-    fn start(mut self, channel: &service::Channel) -> Result<(), io::Error> {
-        match self.handshake() {
-            Err(e) => match e {
-                Error::Io(e) => Err(e),
-                Error::UnsupportedVersion(_) => {
-                    let buf = [protocol::VERSION, 0xFF];
-                    self.stream.write_all(&buf)?;
-                    self.stream.flush()?;
-                    Ok(())
-                }
-                Error::UnsupportedAuthentication(_) => {
-                    let buf = [protocol::VERSION, 0xFF];
-                    self.stream.write_all(&buf)?;
-                    self.stream.flush()?;
-                    Ok(())
-                }
-                Error::UnsupportedCommand(_) => {
-                    let buf = [
-                        protocol::VERSION,
-                        0x07,
-                        0x00,
-                        0x01,
-                        0x00,
-                        0x00,
-                        0x00,
-                        0x00,
-                        0x00,
-                        0x00,
-                    ];
-                    self.stream.write_all(&buf)?;
-                    self.stream.flush()?;
-                    Ok(())
-                }
-                Error::AddressTypeNotSupported(_) => {
-                    let buf = [
-                        protocol::VERSION,
-                        0x08,
-                        0x00,
-                        0x01,
-                        0x00,
-                        0x00,
-                        0x00,
-                        0x00,
-                        0x00,
-                        0x00,
-                    ];
-                    self.stream.write_all(&buf)?;
-                    self.stream.flush()?;
-                    Ok(())
-                }
-            },
-            Ok(command) => {
-                let mut client_rdp = channel.connect(SERVICE)?;
-
-                command.send(&mut client_rdp)?;
-
-                match command {
-                    protocol::Command::Connect(_) => self.command_connect(client_rdp),
-                    protocol::Command::Bind => self.command_bind(client_rdp),
-                }
+            match command {
+                protocol::Command::Connect(_) => command_connect(stream, client_rdp),
+                protocol::Command::Bind => command_bind(stream, client_rdp),
             }
         }
     }

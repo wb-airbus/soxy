@@ -1,11 +1,16 @@
-use std::{io, net};
+use std::io;
+#[cfg(feature = "frontend")]
+use std::net;
 
+#[cfg(feature = "frontend")]
 pub const VERSION: u8 = 0x05;
+#[cfg(feature = "frontend")]
 pub const AUTHENTICATION_NONE: u8 = 0x00;
 
 const ID_CMD_CONNECT: u8 = 0x01;
 const ID_CMD_BIND: u8 = 0x02;
 
+#[cfg(feature = "frontend")]
 pub enum Error {
     Io(io::Error),
     UnsupportedVersion(u8),
@@ -13,6 +18,7 @@ pub enum Error {
     AddressTypeNotSupported(u8),
 }
 
+#[cfg(feature = "frontend")]
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
         Self::Io(e)
@@ -26,6 +32,7 @@ pub enum Command {
 }
 
 impl Command {
+    #[cfg(feature = "frontend")]
     pub(crate) fn read<R>(reader: &mut R) -> Result<Self, Error>
     where
         R: io::Read,
@@ -113,6 +120,7 @@ impl Command {
         }
     }
 
+    #[cfg(feature = "frontend")]
     pub(crate) fn send<W>(&self, stream: &mut W) -> Result<(), io::Error>
     where
         W: io::Write,
@@ -136,6 +144,7 @@ impl Command {
         stream.flush()
     }
 
+    #[cfg(feature = "backend")]
     pub(crate) fn receive<R>(stream: &mut R) -> Result<Self, io::Error>
     where
         R: io::Read,
@@ -176,21 +185,28 @@ pub enum Response {
     BindFailed,
 }
 
+#[cfg(feature = "frontend")]
 const RSP_OK: u8 = 0x00;
+#[cfg(feature = "frontend")]
 const RSP_GENERAL_SOCKS_SERVER_FAILURE: u8 = 0x01;
 //const RSP_CONNECTION_NOT_ALLOWED: u8 = 0x02;
+#[cfg(feature = "frontend")]
 const RSP_NETWORK_UNREACHABLE: u8 = 0x03;
+#[cfg(feature = "frontend")]
 const RSP_HOST_UNREACHABLE: u8 = 0x04;
+#[cfg(feature = "frontend")]
 const RSP_CONNECTION_REFUSED: u8 = 0x05;
 //const RSP_TTL_EXPIRED: u8 = 0x06;
 //const RSP_COMMAND_NOT_SUPPORTED: u8 = 0x07;
 //const RSP_ADDRESS_TYPE_NOT_SUPPORTED: u8 = 0x08;
 
 impl Response {
+    #[cfg(feature = "frontend")]
     pub const fn is_ok(&self) -> bool {
         matches!(self, Self::Ok(_))
     }
 
+    #[cfg(feature = "frontend")]
     pub(crate) fn answer_to_client<W>(&self, writer: &mut W) -> Result<(), io::Error>
     where
         W: io::Write,
@@ -264,6 +280,7 @@ impl Response {
         writer.flush()
     }
 
+    #[cfg(feature = "backend")]
     pub(crate) fn send<W>(&self, stream: &mut W) -> Result<(), io::Error>
     where
         W: io::Write,
@@ -286,6 +303,7 @@ impl Response {
         stream.flush()
     }
 
+    #[cfg(feature = "frontend")]
     pub(crate) fn receive<R>(stream: &mut R) -> Result<Self, io::Error>
     where
         R: io::Read,

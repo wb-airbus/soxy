@@ -1,6 +1,8 @@
-use crate::api;
+use crate::{api, clipboard, command, ftp, socks5, stage0};
+#[cfg(feature = "backend")]
+use std::collections::hash_map;
 use std::{
-    collections::{self, hash_map},
+    collections, fmt,
     io::{self, Write},
     net::{self, TcpStream},
     sync, thread,
@@ -45,7 +47,8 @@ impl Channel {
         Ok(())
     }
 
-    pub(crate) fn connect(&self, service: api::Service) -> Result<RdpStream, io::Error> {
+    #[cfg(feature = "frontend")]
+    pub(crate) fn connect<'a>(&'a self, service: &'a Service) -> Result<RdpStream<'a>, io::Error> {
         let client_id = api::new_client_id();
 
         let (from_rdp_send, from_rdp_recv) = crossbeam_channel::bounded(CLIENT_CHUNK_BUFFER_SIZE);
@@ -65,9 +68,9 @@ impl Channel {
         }
     }
 
+    #[cfg(feature = "backend")]
     fn handle_backend_start<'a>(
         &'a self,
-        service_kind: api::ServiceKind,
         client_id: api::ClientId,
         payload: &[u8],
         scope: &'a thread::Scope<'a, '_>,
@@ -81,7 +84,7 @@ impl Channel {
             hash_map::Entry::Occupied(_) => {
                 crate::error!("discarding start for already existing client {client_id:x}");
             }
-            hash_map::Entry::Vacant(ve) => match api::Service::try_from(payload) {
+            hash_map::Entry::Vacant(ve) => match lookup_bytes(payload) {
                 Err(service) => {
                     crate::error!("new client for unknown service {service}!");
                     self.send(api::Chunk::end(client_id))?;
@@ -97,9 +100,9 @@ impl Channel {
                     stream.accept()?;
 
                     thread::Builder::new()
-                        .name(format!("{service_kind} {service} {client_id:x}"))
+                        .name(format!("{} {service} {client_id:x}", Kind::Backend))
                         .spawn_scoped(scope, move || {
-                            if let Err(e) = service.accept(stream) {
+                            if let Err(e) = (service.backend.handler)(stream) {
                                 crate::debug!("error: {e}");
                             }
                         })
@@ -113,7 +116,7 @@ impl Channel {
 
     pub fn start(
         &self,
-        service_kind: api::ServiceKind,
+        service_kind: Kind,
         from_rdp: &crossbeam_channel::Receiver<api::ChunkControl>,
     ) -> Result<(), api::Error> {
         thread::scope(|scope| {
@@ -130,20 +133,18 @@ impl Channel {
                         }
                         Ok(chunk_type) => {
                             let client_id = chunk.client_id();
-                            let payload = chunk.payload();
 
                             match chunk_type {
                                 api::ChunkType::Start => match service_kind {
-                                    api::ServiceKind::Frontend => {
+                                    #[cfg(feature = "frontend")]
+                                    Kind::Frontend => {
+                                        let _ = scope;
                                         unimplemented!("accept connections");
                                     }
-                                    api::ServiceKind::Backend => {
-                                        self.handle_backend_start(
-                                            service_kind,
-                                            client_id,
-                                            payload,
-                                            scope,
-                                        )?;
+                                    #[cfg(feature = "backend")]
+                                    Kind::Backend => {
+                                        let payload = chunk.payload();
+                                        self.handle_backend_start(client_id, payload, scope)?;
                                     }
                                 },
                                 api::ChunkType::Data => {
@@ -210,12 +211,13 @@ impl RdpStreamState {
 
 struct RdpStreamCommon<'a> {
     channel: &'a Channel,
-    service: api::Service,
+    service: &'a Service,
     client_id: api::ClientId,
     state: RdpStreamState,
 }
 
 impl RdpStreamCommon<'_> {
+    #[cfg(feature = "backend")]
     fn accept(&mut self) -> Result<(), io::Error> {
         match &self.state {
             RdpStreamState::Ready => {
@@ -233,6 +235,7 @@ impl RdpStreamCommon<'_> {
         }
     }
 
+    #[cfg(feature = "frontend")]
     fn connect(&mut self) -> Result<(), io::Error> {
         match &self.state {
             RdpStreamState::Ready => {
@@ -284,7 +287,7 @@ impl Drop for RdpStreamCommon<'_> {
 struct RdpStreamControl<'a>(sync::Arc<sync::RwLock<RdpStreamCommon<'a>>>);
 
 impl<'a> RdpStreamControl<'a> {
-    fn new(channel: &'a Channel, service: api::Service, client_id: api::ClientId) -> Self {
+    fn new(channel: &'a Channel, service: &'a Service, client_id: api::ClientId) -> Self {
         Self(sync::Arc::new(sync::RwLock::new(RdpStreamCommon {
             channel,
             service,
@@ -301,10 +304,12 @@ impl<'a> RdpStreamControl<'a> {
         self.0.read().unwrap().state.is_connected()
     }
 
+    #[cfg(feature = "backend")]
     fn accept(&self) -> Result<(), io::Error> {
         self.0.write().unwrap().accept()
     }
 
+    #[cfg(feature = "frontend")]
     fn connect(&self) -> Result<(), io::Error> {
         self.0.write().unwrap().connect()
     }
@@ -336,7 +341,7 @@ pub struct RdpStream<'a> {
 impl<'a> RdpStream<'a> {
     fn new(
         channel: &'a Channel,
-        service: api::Service,
+        service: &'a Service,
         client_id: api::ClientId,
         from_rdp: crossbeam_channel::Receiver<api::Chunk>,
     ) -> Self {
@@ -356,10 +361,12 @@ impl<'a> RdpStream<'a> {
         self.control.client_id()
     }
 
+    #[cfg(feature = "backend")]
     fn accept(&self) -> Result<(), io::Error> {
         self.control.accept()
     }
 
+    #[cfg(feature = "frontend")]
     fn connect(&self) -> Result<(), io::Error> {
         self.control.connect()
     }
@@ -559,8 +566,8 @@ where
 }
 
 pub(crate) fn double_stream_copy(
-    service_kind: api::ServiceKind,
-    service: api::Service,
+    service_kind: Kind,
+    service: &Service,
     rdp_stream: RdpStream<'_>,
     tcp_stream: TcpStream,
 ) -> Result<(), io::Error> {
@@ -610,12 +617,147 @@ pub(crate) fn double_stream_copy(
     })
 }
 
-pub trait Frontend: Sized {
-    fn bind(tcp: net::SocketAddr) -> Result<Self, io::Error>;
-
-    fn start(&mut self, channel: &Channel) -> Result<(), io::Error>;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    #[cfg(feature = "backend")]
+    Backend,
+    #[cfg(feature = "frontend")]
+    Frontend,
 }
 
-pub trait Backend: Sized {
-    fn accept(stream: RdpStream<'_>) -> Result<(), io::Error>;
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            #[cfg(feature = "backend")]
+            Self::Backend => write!(f, "backend"),
+            #[cfg(feature = "frontend")]
+            Self::Frontend => write!(f, "frontend"),
+        }
+    }
 }
+
+#[cfg(feature = "frontend")]
+pub struct TcpFrontendServer {
+    service: &'static Service,
+    server: net::TcpListener,
+    pub(crate) ip: net::IpAddr,
+}
+
+#[cfg(feature = "frontend")]
+impl TcpFrontendServer {
+    pub fn service(&self) -> &Service {
+        self.service
+    }
+
+    pub fn bind(service: &'static Service, tcp: net::SocketAddr) -> Result<Self, io::Error> {
+        crate::info!("accepting {service} clients on {tcp}");
+
+        let server = net::TcpListener::bind(tcp)?;
+        let ip = server.local_addr()?.ip();
+
+        Ok(Self {
+            service,
+            server,
+            ip,
+        })
+    }
+
+    pub fn start<'a>(&'a self, channel: &'a Channel) -> Result<(), io::Error> {
+        thread::scope(|scope| {
+            loop {
+                let (client, client_addr) = self.server.accept()?;
+
+                crate::debug!("new client {client_addr}");
+
+                thread::Builder::new()
+                    .name(format!("{} {} {client_addr}", Kind::Frontend, self.service))
+                    .spawn_scoped(scope, move || match self.service.tcp_frontend.as_ref() {
+                        None => {
+                            crate::error!("no TCP frontend for {}", self.service);
+                        }
+                        Some(frontend) => {
+                            if let Err(e) = (frontend.handler)(&self, scope, client, channel) {
+                                crate::debug!("error: {e}");
+                            }
+                        }
+                    })
+                    .unwrap();
+            }
+        })
+    }
+}
+
+#[cfg(feature = "frontend")]
+type FrontendHandler<S, C> = for<'a> fn(
+    server: &S,
+    scope: &'a thread::Scope<'a, '_>,
+    client: C,
+    channel: &'a Channel,
+) -> Result<(), io::Error>;
+
+#[cfg(feature = "frontend")]
+type TcpFrontendHandler = FrontendHandler<TcpFrontendServer, net::TcpStream>;
+
+#[cfg(feature = "frontend")]
+pub struct TcpFrontend {
+    pub(crate) default_port: u16,
+    pub(crate) handler: TcpFrontendHandler,
+}
+
+#[cfg(feature = "frontend")]
+impl TcpFrontend {
+    pub const fn default_port(&self) -> u16 {
+        self.default_port
+    }
+}
+
+#[cfg(feature = "backend")]
+type BackendHandler = fn(stream: RdpStream<'_>) -> Result<(), io::Error>;
+
+#[cfg(feature = "backend")]
+pub(crate) struct Backend {
+    pub(crate) handler: BackendHandler,
+}
+
+pub struct Service {
+    pub(crate) name: &'static str,
+    #[cfg(feature = "frontend")]
+    pub(crate) tcp_frontend: Option<TcpFrontend>,
+    #[cfg(feature = "backend")]
+    pub(crate) backend: Backend,
+}
+
+impl Service {
+    pub const fn name(&self) -> &'static str {
+        self.name
+    }
+
+    #[cfg(feature = "frontend")]
+    pub fn tcp_frontend(&self) -> Option<&TcpFrontend> {
+        self.tcp_frontend.as_ref()
+    }
+}
+
+impl fmt::Display for Service {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
+#[cfg(feature = "backend")]
+fn lookup_bytes(bytes: &[u8]) -> Result<&'static Service, String> {
+    let name = String::from_utf8_lossy(bytes).to_string();
+    lookup(&name).ok_or(name)
+}
+
+pub fn lookup(name: &str) -> Option<&'static Service> {
+    SERVICES.iter().find(|s| s.name == name).map(|s| *s)
+}
+
+pub const SERVICES: [&'static Service; 5] = [
+    &clipboard::SERVICE,
+    &command::SERVICE,
+    &ftp::SERVICE,
+    &socks5::SERVICE,
+    &stage0::SERVICE,
+];

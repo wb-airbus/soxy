@@ -1,4 +1,4 @@
-use common::{api, service};
+use common::service;
 
 const CHANNEL_SIZE: usize = 256;
 
@@ -17,7 +17,7 @@ fn main() {
         return;
     }
 
-    if let Err(e) = backend_channel.start(api::ServiceKind::Backend, &frontend_to_backend_receive) {
+    if let Err(e) = backend_channel.start(service::Kind::Backend, &frontend_to_backend_receive) {
         common::error!("error: {e}");
     } else {
         common::debug!("terminated");

@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 frontend = { path = "../frontend" }
-common = { path = "../common" }
+common = { path = "../common", features = [ "backend", "frontend" ] }
 crossbeam-channel = "0"
 log = { version = "0", optional = true }
 

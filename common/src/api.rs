@@ -1,89 +1,9 @@
-use crate::{
-    clipboard, command, ftp,
-    service::{self, Backend},
-    socks5, stage0,
-};
-use std::{borrow, fmt, io, sync};
+use crate::service;
+#[cfg(feature = "frontend")]
+use std::sync;
+use std::{fmt, io};
 
 pub const CHUNK_LENGTH: usize = 1600; // this is the max value
-
-const SERVICE_CLIPBOARD: &str = "clipboard";
-const SERVICE_COMMAND: &str = "command";
-const SERVICE_FTP: &str = "ftp";
-const SERVICE_SOCKS5: &str = "socks5";
-const SERVICE_STAGE0: &str = "stage0";
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Service {
-    Clipboard,
-    Command,
-    Ftp,
-    Socks5,
-    Stage0,
-}
-
-impl Service {
-    const fn value(self) -> &'static str {
-        match self {
-            Self::Clipboard => SERVICE_CLIPBOARD,
-            Self::Command => SERVICE_COMMAND,
-            Self::Ftp => SERVICE_FTP,
-            Self::Socks5 => SERVICE_SOCKS5,
-            Self::Stage0 => SERVICE_STAGE0,
-        }
-    }
-
-    const fn as_bytes(self) -> &'static [u8] {
-        self.value().as_bytes()
-    }
-
-    pub fn accept(&self, stream: service::RdpStream) -> Result<(), io::Error> {
-        match self {
-            Self::Clipboard => clipboard::backend::Server::accept(stream),
-            Self::Command => command::backend::Server::accept(stream),
-            Self::Ftp => ftp::backend::Server::accept(stream),
-            Self::Socks5 => socks5::backend::Server::accept(stream),
-            Self::Stage0 => stage0::backend::Server::accept(stream),
-        }
-    }
-}
-
-impl<'a> TryFrom<&'a [u8]> for Service {
-    type Error = borrow::Cow<'a, str>;
-
-    fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
-        let s = String::from_utf8_lossy(value);
-        match s.as_ref() {
-            SERVICE_CLIPBOARD => Ok(Self::Clipboard),
-            SERVICE_COMMAND => Ok(Self::Command),
-            SERVICE_FTP => Ok(Self::Ftp),
-            SERVICE_SOCKS5 => Ok(Self::Socks5),
-            SERVICE_STAGE0 => Ok(Self::Stage0),
-            _ => Err(s),
-        }
-    }
-}
-
-impl fmt::Display for Service {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.value())
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ServiceKind {
-    Backend,
-    Frontend,
-}
-
-impl fmt::Display for ServiceKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Backend => write!(f, "backend"),
-            Self::Frontend => write!(f, "frontend"),
-        }
-    }
-}
 
 #[derive(Debug)]
 pub enum Error {
@@ -163,8 +83,10 @@ const ID_END: u8 = 0x02;
 
 pub type ClientId = u32;
 
+#[cfg(feature = "frontend")]
 static CLIENT_ID_COUNTER: sync::atomic::AtomicU32 = sync::atomic::AtomicU32::new(0);
 
+#[cfg(feature = "frontend")]
 pub(crate) fn new_client_id() -> ClientId {
     CLIENT_ID_COUNTER.fetch_add(1, sync::atomic::Ordering::Relaxed)
 }
@@ -200,8 +122,8 @@ impl Chunk {
         Ok(Self(content))
     }
 
-    pub fn start(client_id: ClientId, service: Service) -> Result<Self, io::Error> {
-        Self::new(ChunkType::Start, client_id, Some(service.as_bytes()))
+    pub fn start(client_id: ClientId, service: &service::Service) -> Result<Self, io::Error> {
+        Self::new(ChunkType::Start, client_id, Some(service.name().as_bytes()))
     }
 
     pub fn data(client_id: ClientId, data: &[u8]) -> Result<Self, io::Error> {
