@@ -470,13 +470,7 @@ and the `backend`.
 
 ### Steps
 
-1. Update `common/src/api.rs`:
-   - Define a unique name: `const SERVICE_PING: &str = "ping";`,
-   - Add a `Ping` variant to the `Service` enum,
-   - Complete the functions `value`, `accept` and `try_from` of the `Service`
-     enum;
-2. Declare the new module in `common/src/lib.rs`: `pub mod ping`;
-3. Create a new module structure:
+1. Create a new module structure:
 
 ```
 common/src/ping/
@@ -485,12 +479,17 @@ common/src/ping/
 └── mod.rs
 ```
 
-4. Implement `service::Frontend` in `common/src/ping/frontend.rs` and
-   `service::Backend` in `common/src/ping/backend.rs`;
-5. Add proper initialization of the frontend part of the service in the
-   `init` function in `frontend/src/lib.rs`.
+2. Declare the new module in `common/src/lib.rs`: `mod ping`;
 
-Refer to `common/src/clipboard/` for examples.
+3. Instanciate a `service::Service` in `static const SERVICE` in
+   `common/src/ping/mod.rs`;
+
+4. Update `common/src/service.rs`:
+   - Import the `ping` module,
+   - Add `&ping::SERVICE` to the `SERVICES` array at the end of the
+     file.
+   
+Refer to `common/src/clipboard/` for an example.
 
 
 ## 🏢 License
