@@ -17,5 +17,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Dependencies
+        run: sudo apt install gcc-multilib libc-dev clang mingw-w64 clang
+
+      - name: Rustup update
+        run: rustup update
+
+      - name: Setup
+        run: make setup
+
       - name: Run clippy
         run: make clippy
