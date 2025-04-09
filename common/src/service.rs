@@ -754,7 +754,7 @@ pub fn lookup(name: &str) -> Option<&'static Service> {
     SERVICES.iter().find(|s| s.name == name).map(|s| *s)
 }
 
-pub const SERVICES: [&'static Service; 5] = [
+pub const SERVICES: [&Service; 5] = [
     &clipboard::SERVICE,
     &command::SERVICE,
     &ftp::SERVICE,
