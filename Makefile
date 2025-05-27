@@ -5,24 +5,35 @@ TARGETS_STANDALONE ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-lin
 RELEASE_DIR:=release
 DEBUG_DIR:=debug
 
-BACKEND_RELEASE_LIB_RUST_FLAGS=--remap-path-prefix ${HOME}=/foo -Zlocation-detail=none
+BACKEND_RELEASE_LIB_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo -Zlocation-detail=none
 
-BACKEND_RELEASE_BIN_RUST_FLAGS=--remap-path-prefix ${HOME}=/foo -Zlocation-detail=none
+BACKEND_RELEASE_BIN_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo -Zlocation-detail=none
 BACKEND_RELEASE_BIN_WINDOWS_RUST_FLAGS=$(BACKEND_RELEASE_BIN_RUST_FLAGS) -Ctarget-feature=+crt-static
 
-BACKEND_BUILD_FLAGS=-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort
+BACKEND_BUILD_FLAGS:=-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort
+
+TOOLCHAIN_FRONTEND_DEBUG ?= stable
+TOOLCHAIN_FRONTEND_RELEASE ?= stable
+TOOLCHAIN_BACKEND_DEBUG ?= stable
+TOOLCHAIN_BACKEND_RELEASE ?= nightly
+TOOLCHAIN_STANDALONE_DEBUG ?= stable
+TOOLCHAIN_STANDALONE_RELEASE ?= stable
 
 SHELL:=bash
 
 .PHONY: setup
 setup:
-	rustup toolchain add stable
-	rustup toolchain add nightly
-	echo $(TARGETS_FRONTEND) $(TARGETS_BACKEND) $(TARGETS_STANDALONE) | tr ' ' '\n' | sort -u | while read t ; do \
-		echo ; echo "# Installing toolchains and components for $$t" ; echo ; \
-		rustup target add --toolchain stable $$t || exit 1 ; \
-		rustup target add --toolchain nightly $$t || exit 1 ; \
-		rustup component add --toolchain nightly-$$t rust-src || exit 1 ; \
+	echo $(TOOLCHAIN_FRONTEND_DEBUG) $(TOOLCHAIN_FRONTEND_RELEASE) $(TOOLCHAIN_BACKEND_DEBUG) $(TOOLCHAIN_BACKEND_RELEASE) $(TOOLCHAIN_STANDALONE_DEBUG) $(TOOLCHAIN_STANDALONE_RELEASE) | tr ' ' '\n' | sort -u | while read toolchain ; do \
+		rustup toolchain add $$toolchain || exit 1 ; \
+	done
+	@echo $(TARGETS_FRONTEND) $(TARGETS_BACKEND) $(TARGETS_STANDALONE) | tr ' ' '\n' | sort -u | while read target ; do \
+		echo $(TOOLCHAIN_FRONTEND_DEBUG) $(TOOLCHAIN_FRONTEND_RELEASE) $(TOOLCHAIN_BACKEND_DEBUG) $(TOOLCHAIN_BACKEND_RELEASE) $(TOOLCHAIN_STANDALONE_DEBUG) $(TOOLCHAIN_STANDALONE_RELEASE) | tr ' ' '\n' | sort -u | while read toolchain ; do \
+			echo ; echo "# Installing component $$target for $$toolchain" ; echo ; \
+			rustup target add --toolchain $$toolchain $$target || exit 1 ; \
+			if [[ ! "$$target" =~ "llvm" ]] ; then \
+				rustup component add --toolchain $${toolchain}-$$target rust-src || exit 1 ; \
+			fi ; \
+		done ; \
 	done
 
 .PHONY: release
@@ -89,38 +100,38 @@ distclean: clean
 build-release:
 	@for t in $(TARGETS_FRONTEND) ; do \
 		echo ; echo "# Building release frontend for $$t" ; echo ; \
-		(cd frontend && cargo build --release --features log --target $$t && cd ..) || exit 1 ; \
+		(cd frontend && cargo +$(TOOLCHAIN_FRONTEND_RELEASE) build --release --features log --target $$t && cd ..) || exit 1 ; \
 	done
 	@for t in $(TARGETS_BACKEND) ; do \
 		echo ; echo "# Building release backend library for $$t" ; echo ; \
-		(cd backend && RUSTFLAGS="$(BACKEND_RELEASE_LIB_RUST_FLAGS)" cargo +nightly build --lib --release --target $$t $(BACKEND_BUILD_FLAGS) && cd ..) || exit 1 ; \
+		(cd backend && RUSTFLAGS="$(BACKEND_RELEASE_LIB_RUST_FLAGS)" cargo +$(TOOLCHAIN_BACKEND_RELEASE) build --lib --release --target $$t $(BACKEND_BUILD_FLAGS) && cd ..) || exit 1 ; \
 		echo ; echo "# Building release backend binary for $$t" ; echo ; \
 		FLAGS="$(BACKEND_RELEASE_BIN_RUST_FLAGS)" ; \
 		if echo $$t | grep -q windows ; then \
 			FLAGS="$(BACKEND_RELEASE_BIN_WINDOWS_RUST_FLAGS)" ; \
                 fi ; \
-		(cd backend && RUSTFLAGS="$$FLAGS" cargo +nightly build --bins --release --target $$t $(BACKEND_BUILD_FLAGS) && cd ..) ; \
+		(cd backend && RUSTFLAGS="$$FLAGS" cargo +$(TOOLCHAIN_BACKEND_RELEASE) build --bins --release --target $$t $(BACKEND_BUILD_FLAGS) && cd ..) ; \
 	done
 	@for t in $(TARGETS_STANDALONE) ; do \
 		echo ; echo "# Building release standalone for $$t" ; echo ; \
-		(cd standalone && cargo build --release --features log --target $$t && cd ..) || exit 1 ; \
+		(cd standalone && cargo +$(TOOLCHAIN_STANDALONE_RELEASE) build --release --features log --target $$t && cd ..) || exit 1 ; \
 	done
 
 .PHONY: build-debug
 build-debug:
 	@for t in $(TARGETS_FRONTEND) ; do \
 		echo ; echo "# Building debug frontend for $$t" ; echo ; \
-		(cd frontend && cargo build --features log --target $$t && cd ..) || exit 1 ; \
+		(cd frontend && cargo +$(TOOLCHAIN_FRONTEND_DEBUG) build --features log --target $$t && cd ..) || exit 1 ; \
 	done
 	@for t in $(TARGETS_BACKEND) ; do \
 		echo ; echo "# Building debug backend library for $$t" ; echo ; \
-		(cd backend && cargo build --lib --features log --target $$t && cd ..) || exit 1 ; \
+		(cd backend && cargo +$(TOOLCHAIN_BACKEND_DEBUG) build --lib --features log --target $$t && cd ..) || exit 1 ; \
 		echo ; echo "# Building debug backend binary for $$t" ; echo ; \
-		(cd backend && cargo build --bins --features log --target $$t && cd ..) || exit 1 ; \
+		(cd backend && cargo +$(TOOLCHAIN_BACKEND_DEBUG) build --bins --features log --target $$t && cd ..) || exit 1 ; \
 	done
 	@for t in $(TARGETS_STANDALONE) ; do \
 		echo ; echo "# Building debug standalone for $$t" ; echo ; \
-		(cd standalone && cargo build --features log --target $$t && cd ..) || exit 1 ; \
+		(cd standalone && cargo +$(TOOLCHAIN_STANDALONE_DEBUG) build --features log --target $$t && cd ..) || exit 1 ; \
 	done
 
 #############
