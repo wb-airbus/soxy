@@ -84,7 +84,7 @@ dependencies = [
 
 [[package]]
 name = "common"
-version = "2.2.0"
+version = "2.2.1"
 dependencies = [
  "copyrs",
  "crossbeam-channel",
@@ -172,7 +172,7 @@ dependencies = [
 
 [[package]]
 name = "frontend"
-version = "2.2.0"
+version = "2.2.1"
 dependencies = [
  "bindgen",
  "common",
@@ -483,7 +483,7 @@ dependencies = [
 
 [[package]]
 name = "standalone"
-version = "2.2.0"
+version = "2.2.1"
 dependencies = [
  "common",
  "crossbeam-channel",
