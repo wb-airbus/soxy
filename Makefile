@@ -5,9 +5,11 @@ TARGETS_STANDALONE ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-lin
 RELEASE_DIR:=release
 DEBUG_DIR:=debug
 
-BACKEND_RELEASE_LIB_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo -Zlocation-detail=none
+BACKEND_RELEASE_BASE_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo -Zlocation-detail=none
 
-BACKEND_RELEASE_BIN_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo -Zlocation-detail=none
+BACKEND_RELEASE_LIB_RUST_FLAGS:=$(BACKEND_RELEASE_BASE_RUST_FLAGS)
+
+BACKEND_RELEASE_BIN_RUST_FLAGS:=$(BACKEND_RELEASE_BASE_RUST_FLAGS)
 BACKEND_RELEASE_BIN_WINDOWS_RUST_FLAGS=$(BACKEND_RELEASE_BIN_RUST_FLAGS) -Ctarget-feature=+crt-static
 
 BACKEND_BUILD_FLAGS:=-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort
@@ -99,13 +101,13 @@ distclean: clean
 .PHONY: build-release
 build-release:
 	@for t in $(TARGETS_FRONTEND) ; do \
-		echo ; echo "# Building release frontend for $$t" ; echo ; \
+		echo ; echo "# Building release frontend for $$t with $(TOOLCHAIN_FRONTEND_RELEASE)" ; echo ; \
 		(cd frontend && cargo +$(TOOLCHAIN_FRONTEND_RELEASE) build --release --features log --target $$t && cd ..) || exit 1 ; \
 	done
 	@for t in $(TARGETS_BACKEND) ; do \
-		echo ; echo "# Building release backend library for $$t" ; echo ; \
+		echo ; echo "# Building release backend library for $$t with $(TOOLCHAIN_BACKEND_RELEASE)" ; echo ; \
 		(cd backend && RUSTFLAGS="$(BACKEND_RELEASE_LIB_RUST_FLAGS)" cargo +$(TOOLCHAIN_BACKEND_RELEASE) build --lib --release --target $$t $(BACKEND_BUILD_FLAGS) && cd ..) || exit 1 ; \
-		echo ; echo "# Building release backend binary for $$t" ; echo ; \
+		echo ; echo "# Building release backend binary for $$t with $(TOOLCHAIN_BACKEND_RELEASE)" ; echo ; \
 		FLAGS="$(BACKEND_RELEASE_BIN_RUST_FLAGS)" ; \
 		if echo $$t | grep -q windows ; then \
 			FLAGS="$(BACKEND_RELEASE_BIN_WINDOWS_RUST_FLAGS)" ; \
@@ -113,24 +115,24 @@ build-release:
 		(cd backend && RUSTFLAGS="$$FLAGS" cargo +$(TOOLCHAIN_BACKEND_RELEASE) build --bins --release --target $$t $(BACKEND_BUILD_FLAGS) && cd ..) ; \
 	done
 	@for t in $(TARGETS_STANDALONE) ; do \
-		echo ; echo "# Building release standalone for $$t" ; echo ; \
+		echo ; echo "# Building release standalone for $$ti with $(TOOLCHAIN_STANDALONE_RELEASE)" ; echo ; \
 		(cd standalone && cargo +$(TOOLCHAIN_STANDALONE_RELEASE) build --release --features log --target $$t && cd ..) || exit 1 ; \
 	done
 
 .PHONY: build-debug
 build-debug:
 	@for t in $(TARGETS_FRONTEND) ; do \
-		echo ; echo "# Building debug frontend for $$t" ; echo ; \
+		echo ; echo "# Building debug frontend for $$t with $(TOOLCHAIN_FRONTEND_DEBUG)" ; echo ; \
 		(cd frontend && cargo +$(TOOLCHAIN_FRONTEND_DEBUG) build --features log --target $$t && cd ..) || exit 1 ; \
 	done
 	@for t in $(TARGETS_BACKEND) ; do \
-		echo ; echo "# Building debug backend library for $$t" ; echo ; \
+		echo ; echo "# Building debug backend library for $$t with $(TOOLCHAIN_BACKEND_DEBUG)" ; echo ; \
 		(cd backend && cargo +$(TOOLCHAIN_BACKEND_DEBUG) build --lib --features log --target $$t && cd ..) || exit 1 ; \
-		echo ; echo "# Building debug backend binary for $$t" ; echo ; \
+		echo ; echo "# Building debug backend binary for $$t with $(TOOLCHAIN_BACKEND_DEBUG)" ; echo ; \
 		(cd backend && cargo +$(TOOLCHAIN_BACKEND_DEBUG) build --bins --features log --target $$t && cd ..) || exit 1 ; \
 	done
 	@for t in $(TARGETS_STANDALONE) ; do \
-		echo ; echo "# Building debug standalone for $$t" ; echo ; \
+		echo ; echo "# Building debug standalone for $$t with $(TOOLCHAIN_STANDALONE_DEBUG)" ; echo ; \
 		(cd standalone && cargo +$(TOOLCHAIN_STANDALONE_DEBUG) build --features log --target $$t && cd ..) || exit 1 ; \
 	done
 
@@ -139,16 +141,16 @@ build-debug:
 .PHONY: clippy
 clippy:
 	@for t in $(TARGETS_FRONTEND) ; do \
-		echo ; echo "# Clippy on frontend for $$t" ; echo ; \
-		(cd frontend && cargo $@ --target $$t && cd ..) || exit 1 ; \
+		echo ; echo "# Clippy on frontend for $$t with $(TOOLCHAIN_FRONTEND_DEBUG)" ; echo ; \
+		(cd frontend && cargo +$(TOOLCHAIN_FRONTEND_DEBUG) $@ --target $$t && cd ..) || exit 1 ; \
 	done
 	@for t in $(TARGETS_BACKEND) ; do \
-		echo ; echo "# Clippy on backend for $$t" ; echo ; \
-		(cd backend && cargo $@ --target $$t && cd ..) || exit 1 ; \
+		echo ; echo "# Clippy on backend for $$t with $(TOOLCHAIN_BACKEND_DEBUG)" ; echo ; \
+		(cd backend && cargo +$(TOOLCHAIN_BACKEND_DEBUG) $@ --target $$t && cd ..) || exit 1 ; \
 	done
 	@for t in $(TARGETS_STANDALONE) ; do \
-		echo ; echo "# Clippy on standalone for $$t" ; echo ; \
-		(cd standalone && cargo $@ --target $$t && cd ..) || exit 1 ; \
+		echo ; echo "# Clippy on standalone for $$t with $(TOOLCHAIN_STANDALONE_DEBUG)" ; echo ; \
+		(cd standalone && cargo +$(TOOLCHAIN_STANDALONE_DEBUG) $@ --target $$t && cd ..) || exit 1 ; \
 	done
 
 .PHONY: cargo-fmt
