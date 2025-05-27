@@ -115,7 +115,7 @@ build-release:
 		(cd backend && RUSTFLAGS="$$FLAGS" cargo +$(TOOLCHAIN_BACKEND_RELEASE) build --bins --release --target $$t $(BACKEND_BUILD_FLAGS) && cd ..) ; \
 	done
 	@for t in $(TARGETS_STANDALONE) ; do \
-		echo ; echo "# Building release standalone for $$ti with $(TOOLCHAIN_STANDALONE_RELEASE)" ; echo ; \
+		echo ; echo "# Building release standalone for $$t with $(TOOLCHAIN_STANDALONE_RELEASE)" ; echo ; \
 		(cd standalone && cargo +$(TOOLCHAIN_STANDALONE_RELEASE) build --release --features log --target $$t && cd ..) || exit 1 ; \
 	done
 
