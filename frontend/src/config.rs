@@ -118,7 +118,7 @@ pub(crate) struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            ip: "::1".into(),
+            ip: "127.0.0.1".into(),
             log: Log::default(),
             services: default_services(),
         }
