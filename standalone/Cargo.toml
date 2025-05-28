@@ -1,6 +1,6 @@
 [package]
 name = "standalone"
-version = "2.3.0"
+version = "3.0.0"
 edition = "2024"
 
 [dependencies]
