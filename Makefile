@@ -32,7 +32,7 @@ SHELL:=bash
 
 .PHONY: setup
 setup:
-	echo $(TOOLCHAIN_FRONTEND_DEBUG) $(TOOLCHAIN_FRONTEND_RELEASE) $(TOOLCHAIN_BACKEND_DEBUG) $(TOOLCHAIN_BACKEND_RELEASE) $(TOOLCHAIN_STANDALONE_DEBUG) $(TOOLCHAIN_STANDALONE_RELEASE) | tr ' ' '\n' | sort -u | while read toolchain ; do \
+	echo $(TOOLCHAIN_FRONTEND_DEBUG) $(TOOLCHAIN_FRONTEND_RELEASE) $(TOOLCHAIN_BACKEND_DEBUG) $(TOOLCHAIN_BACKEND_RELEASE) $(TOOLCHAIN_STANDALONE_DEBUG) $(TOOLCHAIN_STANDALONE_RELEASE) $(TOOLCHAIN_WIN7_BACKEND) | tr ' ' '\n' | sort -u | while read toolchain ; do \
 		rustup toolchain add $$toolchain || exit 1 ; \
 	done
 	@echo $(TARGETS_FRONTEND) $(TARGETS_BACKEND) $(TARGETS_STANDALONE) | tr ' ' '\n' | sort -u | while read target ; do \
@@ -44,7 +44,6 @@ setup:
 			fi ; \
 		done ; \
 	done
-
 	@echo $(TARGETS_WIN7_BACKEND) | tr ' ' '\n' | sort -u | while read target ; do \
 		echo $(TOOLCHAIN_WIN7_BACKEND) | tr ' ' '\n' | sort -u | while read toolchain ; do \
 			echo ; echo "# Installing component $$target for $$toolchain" ; echo ; \
