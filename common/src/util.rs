@@ -25,7 +25,7 @@ pub(crate) fn find_best_address() -> Result<BestAddress, network_interface::Erro
                             net::IpAddr::V4(mask) => {
                                 best_cidr4 = Some((
                                     ip,
-                                    u8::try_from(mask.to_bits().count_ones())
+                                    u8::try_from(u32::from_be_bytes(mask.octets()).count_ones())
                                         .expect("too large v4 mask"),
                                 ));
                             }
@@ -33,8 +33,10 @@ pub(crate) fn find_best_address() -> Result<BestAddress, network_interface::Erro
                         },
                         Some((_, best_mask)) => {
                             let mask_nb_ones = match mask {
-                                net::IpAddr::V4(mask) => u8::try_from(mask.to_bits().count_ones())
-                                    .expect("too large v4 mask"),
+                                net::IpAddr::V4(mask) => {
+                                    u8::try_from(u32::from_be_bytes(mask.octets()).count_ones())
+                                        .expect("too large v4 mask")
+                                }
                                 net::IpAddr::V6(_) => unreachable!(),
                             };
 
@@ -49,7 +51,7 @@ pub(crate) fn find_best_address() -> Result<BestAddress, network_interface::Erro
                             net::IpAddr::V6(mask) => {
                                 best_cidr6 = Some((
                                     ip,
-                                    u8::try_from(mask.to_bits().count_ones())
+                                    u8::try_from(u128::from_be_bytes(mask.octets()).count_ones())
                                         .expect("too large v6 mask"),
                                 ));
                             }
@@ -57,8 +59,10 @@ pub(crate) fn find_best_address() -> Result<BestAddress, network_interface::Erro
                         },
                         Some((_, best_mask)) => {
                             let mask_nb_ones = match mask {
-                                net::IpAddr::V6(mask) => u8::try_from(mask.to_bits().count_ones())
-                                    .expect("too large v6 mask"),
+                                net::IpAddr::V6(mask) => {
+                                    u8::try_from(u128::from_be_bytes(mask.octets()).count_ones())
+                                        .expect("too large v6 mask")
+                                }
                                 net::IpAddr::V4(_) => unreachable!(),
                             };
 

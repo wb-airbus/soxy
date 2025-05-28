@@ -44,7 +44,7 @@ impl<'a> Svc<'a> {
             (self.query)(
                 wtshandle,
                 ws::Win32::System::RemoteDesktop::WTSVirtualClientData,
-                ptr::from_mut(&mut client_dataptr),
+                &mut client_dataptr,
                 &mut len,
             )
         };

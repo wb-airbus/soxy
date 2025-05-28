@@ -119,79 +119,77 @@ impl Channel {
         service_kind: Kind,
         from_rdp: &crossbeam_channel::Receiver<api::ChunkControl>,
     ) -> Result<(), api::Error> {
-        thread::scope(|scope| {
-            loop {
-                let control_chunk = from_rdp.recv()?;
+        thread::scope(|scope| loop {
+            let control_chunk = from_rdp.recv()?;
 
-                match control_chunk {
-                    api::ChunkControl::Shutdown => {
-                        self.shutdown();
+            match control_chunk {
+                api::ChunkControl::Shutdown => {
+                    self.shutdown();
+                }
+                api::ChunkControl::Chunk(chunk) => match chunk.chunk_type() {
+                    Err(_) => {
+                        crate::error!("discarding invalid chunk");
                     }
-                    api::ChunkControl::Chunk(chunk) => match chunk.chunk_type() {
-                        Err(_) => {
-                            crate::error!("discarding invalid chunk");
-                        }
-                        Ok(chunk_type) => {
-                            let client_id = chunk.client_id();
+                    Ok(chunk_type) => {
+                        let client_id = chunk.client_id();
 
-                            match chunk_type {
-                                api::ChunkType::Start => match service_kind {
-                                    #[cfg(feature = "frontend")]
-                                    Kind::Frontend => {
-                                        let _ = scope;
-                                        unimplemented!("accept connections");
-                                    }
-                                    #[cfg(feature = "backend")]
-                                    Kind::Backend => {
-                                        let payload = chunk.payload();
-                                        self.handle_backend_start(client_id, payload, scope)?;
-                                    }
-                                },
-                                api::ChunkType::Data => {
-                                    if let Some(client) = self
-                                        .clients
-                                        .read()
-                                        .map_err(|e| {
-                                            io::Error::new(io::ErrorKind::BrokenPipe, e.to_string())
-                                        })?
-                                        .get(&client_id)
-                                    {
-                                        if client.send(chunk).is_err() {
-                                            crate::warn!(
-                                                "error sending to disconnected client {client_id:x}"
-                                            );
-                                        }
-                                    } else {
-                                        crate::debug!(
-                                            "discarding chunk for unknown client {client_id:x}"
-                                        );
-                                        let _ = self.send(api::Chunk::end(client_id));
-                                    }
+                        match chunk_type {
+                            api::ChunkType::Start => match service_kind {
+                                #[cfg(feature = "frontend")]
+                                Kind::Frontend => {
+                                    let _ = scope;
+                                    unimplemented!("accept connections");
                                 }
-                                api::ChunkType::End => {
-                                    let value = self
-                                        .clients
-                                        .write()
-                                        .map_err(|e| {
-                                            io::Error::new(io::ErrorKind::BrokenPipe, e.to_string())
-                                        })?
-                                        .remove(&client_id);
-                                    if let Some(client) = value {
-                                        if client.send(chunk).is_err() {
-                                            crate::warn!(
-                                                "error sending to disconnected client {client_id:x}"
-                                            );
-                                        }
-                                    } else {
-                                        crate::debug!(
-                                            "discarding chunk for unknown client {client_id:x}"
+                                #[cfg(feature = "backend")]
+                                Kind::Backend => {
+                                    let payload = chunk.payload();
+                                    self.handle_backend_start(client_id, payload, scope)?;
+                                }
+                            },
+                            api::ChunkType::Data => {
+                                if let Some(client) = self
+                                    .clients
+                                    .read()
+                                    .map_err(|e| {
+                                        io::Error::new(io::ErrorKind::BrokenPipe, e.to_string())
+                                    })?
+                                    .get(&client_id)
+                                {
+                                    if client.send(chunk).is_err() {
+                                        crate::warn!(
+                                            "error sending to disconnected client {client_id:x}"
                                         );
                                     }
+                                } else {
+                                    crate::debug!(
+                                        "discarding chunk for unknown client {client_id:x}"
+                                    );
+                                    let _ = self.send(api::Chunk::end(client_id));
+                                }
+                            }
+                            api::ChunkType::End => {
+                                let value = self
+                                    .clients
+                                    .write()
+                                    .map_err(|e| {
+                                        io::Error::new(io::ErrorKind::BrokenPipe, e.to_string())
+                                    })?
+                                    .remove(&client_id);
+                                if let Some(client) = value {
+                                    if client.send(chunk).is_err() {
+                                        crate::warn!(
+                                            "error sending to disconnected client {client_id:x}"
+                                        );
+                                    }
+                                } else {
+                                    crate::debug!(
+                                        "discarding chunk for unknown client {client_id:x}"
+                                    );
                                 }
                             }
                         }
-                    },
-                }
+                    }
+                },
             }
         })
     }
@@ -663,26 +661,24 @@ impl TcpFrontendServer {
     }
 
     pub fn start<'a>(&'a self, channel: &'a Channel) -> Result<(), io::Error> {
-        thread::scope(|scope| {
-            loop {
-                let (client, client_addr) = self.server.accept()?;
+        thread::scope(|scope| loop {
+            let (client, client_addr) = self.server.accept()?;
 
-                crate::debug!("new client {client_addr}");
+            crate::debug!("new client {client_addr}");
 
-                thread::Builder::new()
-                    .name(format!("{} {} {client_addr}", Kind::Frontend, self.service))
-                    .spawn_scoped(scope, move || match self.service.tcp_frontend.as_ref() {
-                        None => {
-                            crate::error!("no TCP frontend for {}", self.service);
+            thread::Builder::new()
+                .name(format!("{} {} {client_addr}", Kind::Frontend, self.service))
+                .spawn_scoped(scope, move || match self.service.tcp_frontend.as_ref() {
+                    None => {
+                        crate::error!("no TCP frontend for {}", self.service);
+                    }
+                    Some(frontend) => {
+                        if let Err(e) = (frontend.handler)(&self, scope, client, channel) {
+                            crate::debug!("error: {e}");
                         }
-                        Some(frontend) => {
-                            if let Err(e) = (frontend.handler)(&self, scope, client, channel) {
-                                crate::debug!("error: {e}");
-                            }
-                        }
-                    })
-                    .unwrap();
-            }
+                    }
+                })
+                .unwrap();
         })
     }
 }
@@ -754,7 +750,7 @@ pub fn lookup(name: &str) -> Option<&'static Service> {
     SERVICES.iter().find(|s| s.name == name).map(|s| *s)
 }
 
-pub const SERVICES: [&Service; 5] = [
+pub static SERVICES: [&Service; 5] = [
     &clipboard::SERVICE,
     &command::SERVICE,
     &ftp::SERVICE,

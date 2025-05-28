@@ -15,7 +15,8 @@ mod log;
 #[cfg(feature = "backend")]
 mod util;
 
-pub const VIRTUAL_CHANNEL_NAME: &ffi::CStr = c"SOXY";
+pub const VIRTUAL_CHANNEL_NAME: &ffi::CStr =
+    unsafe { ffi::CStr::from_bytes_with_nul_unchecked(b"SOXY\x00") };
 
 pub enum Level {
     Off,
