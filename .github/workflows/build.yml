@@ -36,6 +36,9 @@ jobs:
       - name: Build release
         run: make release
 
+      - name: Build release
+        run: make win7
+
       - name: Gather artifacts
         run: |
           mkdir artifacts
