@@ -171,6 +171,7 @@ build-win7:
 		w7t=$$(sed -e 's/windows/win7/' <<< $$t); \
 		echo ; echo "# Building release backend library for $$t with $(TOOLCHAIN_WIN7_BACKEND)" ; echo ; \
 		(cd backend && \
+                 sed 's/version = 4/version = 3/' -i Cargo.lock && \
 		 RUSTFLAGS="$(BACKEND_WIN7_LIB_RUST_FLAGS)" \
 		 CARGO_TARGET_DIR="$(BACKEND_WIN7_TARGET_DIR)" \
 		 cargo +$(TOOLCHAIN_WIN7_BACKEND) build --lib --release --target $$t \
