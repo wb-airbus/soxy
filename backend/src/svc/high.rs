@@ -23,7 +23,7 @@ impl<'a> Svc<'a> {
         }
     }
 
-    pub(crate) fn open(&self, mut name: [i8; 8]) -> Result<Handle, super::Error> {
+    pub(crate) fn open(&self, mut name: [i8; 8]) -> Result<Handle<'_>, super::Error> {
         let wtshandle = unsafe {
             (self.open)(
                 ws::Win32::System::RemoteDesktop::WTS_CURRENT_SERVER_HANDLE,
