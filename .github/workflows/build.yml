@@ -7,7 +7,7 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
-
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -36,7 +36,33 @@ jobs:
       - name: Build release
         run: make release
 
-      - name: Build release
+      - name: Add win7 toolchain env vars
+        run: |
+          {
+            # Gotcha: if any overrides are used below in the call to
+            # `make win7`, they need to be reflected here as well.
+            make --no-print-directory print-TOOLCHAIN_WIN7_BACKEND
+            make --no-print-directory -C win7-rustc print-RUST_STAGE2_DIR
+          } >> $GITHUB_ENV
+
+      # Use a cache action to avoid rebuilding the compiler every time
+      # the CI runs
+      - name: Cache Win7 rustc
+        id: win7-rustc
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.RUST_STAGE2_DIR }}
+          key: |
+            ${{ runner.os }}-rust-toolchain-${{ env.TOOLCHAIN_WIN7_BACKEND }}
+
+      # If the cache was hit, register the cached compiler with rustup
+      - if: ${{ steps.win7-rustc.outputs.cache-hit == 'true' }}
+        name: Register cached toolchain
+        run: |
+          make -C win7-rustc register-toolchain \
+            TOOLCHAIN=${{ env.TOOLCHAIN_WIN7_BACKEND }}
+      
+      - name: Build Win7 release
         run: make win7
 
       - name: Gather artifacts
