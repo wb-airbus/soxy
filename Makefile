@@ -1,20 +1,16 @@
 TARGETS_FRONTEND ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
 TARGETS_BACKEND ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
 TARGETS_STANDALONE ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
-TARGETS_WIN7_BACKEND ?= x86_64-pc-windows-gnu
+TARGETS_WIN7_BACKEND ?= x86_64-win7-windows-gnu
 
 RELEASE_DIR:=release
 DEBUG_DIR:=debug
 
 BACKEND_RELEASE_BASE_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo -Zlocation-detail=none
-BACKEND_WIN7_BASE_RUST_FLAGS:=--remap-path-prefix ${HOME}=/foo 
 
 BACKEND_RELEASE_LIB_RUST_FLAGS:=$(BACKEND_RELEASE_BASE_RUST_FLAGS)
-BACKEND_WIN7_LIB_RUST_FLAGS:=$(BACKEND_WIN7_BASE_RUST_FLAGS)
 
 BACKEND_RELEASE_BIN_RUST_FLAGS:=$(BACKEND_RELEASE_BASE_RUST_FLAGS)
-BACKEND_RELEASE_BIN_WINDOWS_RUST_FLAGS=$(BACKEND_RELEASE_BIN_RUST_FLAGS) -Ctarget-feature=+crt-static
-BACKEND_WIN7_BIN_RUST_FLAGS:=$(BACKEND_WIN7_BASE_RUST_FLAGS) -Ctarget-feature=+crt-static
 
 BACKEND_BUILD_FLAGS:=-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort
 
@@ -24,28 +20,19 @@ TOOLCHAIN_BACKEND_DEBUG ?= stable
 TOOLCHAIN_BACKEND_RELEASE ?= nightly
 TOOLCHAIN_STANDALONE_DEBUG ?= stable
 TOOLCHAIN_STANDALONE_RELEASE ?= stable
-TOOLCHAIN_WIN7_BACKEND ?= 1.75
-
-BACKEND_WIN7_TARGET_DIR:=target/win7
+TOOLCHAIN_WIN7_TAG ?= 1.87.0
+TOOLCHAIN_WIN7_BACKEND ?= win7-$(TOOLCHAIN_WIN7_TAG)
+TOOLCHAIN_WIN7_RUST_DIR = win7-rustc
 
 SHELL:=bash
 
 .PHONY: setup
 setup:
-	echo $(TOOLCHAIN_FRONTEND_DEBUG) $(TOOLCHAIN_FRONTEND_RELEASE) $(TOOLCHAIN_BACKEND_DEBUG) $(TOOLCHAIN_BACKEND_RELEASE) $(TOOLCHAIN_STANDALONE_DEBUG) $(TOOLCHAIN_STANDALONE_RELEASE) $(TOOLCHAIN_WIN7_BACKEND) | tr ' ' '\n' | sort -u | while read toolchain ; do \
+	echo $(TOOLCHAIN_FRONTEND_DEBUG) $(TOOLCHAIN_FRONTEND_RELEASE) $(TOOLCHAIN_BACKEND_DEBUG) $(TOOLCHAIN_BACKEND_RELEASE) $(TOOLCHAIN_STANDALONE_DEBUG) $(TOOLCHAIN_STANDALONE_RELEASE) | tr ' ' '\n' | sort -u | while read toolchain ; do \
 		rustup toolchain add $$toolchain || exit 1 ; \
 	done
 	@echo $(TARGETS_FRONTEND) $(TARGETS_BACKEND) $(TARGETS_STANDALONE) | tr ' ' '\n' | sort -u | while read target ; do \
 		echo $(TOOLCHAIN_FRONTEND_DEBUG) $(TOOLCHAIN_FRONTEND_RELEASE) $(TOOLCHAIN_BACKEND_DEBUG) $(TOOLCHAIN_BACKEND_RELEASE) $(TOOLCHAIN_STANDALONE_DEBUG) $(TOOLCHAIN_STANDALONE_RELEASE) | tr ' ' '\n' | sort -u | while read toolchain ; do \
-			echo ; echo "# Installing component $$target for $$toolchain" ; echo ; \
-			rustup target add --toolchain $$toolchain $$target || exit 1 ; \
-			if [[ ! "$$target" =~ "llvm" ]] ; then \
-				rustup component add --toolchain $${toolchain}-$$target rust-src || exit 1 ; \
-			fi ; \
-		done ; \
-	done
-	@echo $(TARGETS_WIN7_BACKEND) | tr ' ' '\n' | sort -u | while read target ; do \
-		echo $(TOOLCHAIN_WIN7_BACKEND) | tr ' ' '\n' | sort -u | while read toolchain ; do \
 			echo ; echo "# Installing component $$target for $$toolchain" ; echo ; \
 			rustup target add --toolchain $$toolchain $$target || exit 1 ; \
 			if [[ ! "$$target" =~ "llvm" ]] ; then \
@@ -112,11 +99,10 @@ debug: build-debug
 .PHONY: win7
 win7: build-win7
 	@for t in $(TARGETS_WIN7_BACKEND) ; do \
-		w7t=$$(sed -e 's/windows/win7/' <<< $$t); \
-		for f in backend/$(BACKEND_WIN7_TARGET_DIR)/$$t/release/*soxy{,.dll,.exe,.so} ; do \
+		for f in backend/target/$$t/release/*soxy{,.dll,.exe,.so} ; do \
 			if [[ -f "$$f" ]] ; then \
-				mkdir -p $(RELEASE_DIR)/backend/$$w7t && \
-				cp "$$f" $(RELEASE_DIR)/backend/$$w7t/ ; \
+				mkdir -p $(RELEASE_DIR)/backend/$$t && \
+				cp "$$f" $(RELEASE_DIR)/backend/$$t/ ; \
 			fi ; \
 		done ; \
 	done
@@ -124,6 +110,7 @@ win7: build-win7
 .PHONY: distclean
 distclean: clean
 	rm -rf ${RELEASE_DIR} ${DEBUG_DIR}
+	$(MAKE) -C $(TOOLCHAIN_WIN7_RUST_DIR) $@
 
 #############
 
@@ -139,7 +126,7 @@ build-release:
 		echo ; echo "# Building release backend binary for $$t with $(TOOLCHAIN_BACKEND_RELEASE)" ; echo ; \
 		FLAGS="$(BACKEND_RELEASE_BIN_RUST_FLAGS)" ; \
 		if echo $$t | grep -q windows ; then \
-			FLAGS="$(BACKEND_RELEASE_BIN_WINDOWS_RUST_FLAGS)" ; \
+			FLAGS="$(BACKEND_RELEASE_BIN_RUST_FLAGS)" ; \
                 fi ; \
 		(cd backend && RUSTFLAGS="$$FLAGS" cargo +$(TOOLCHAIN_BACKEND_RELEASE) build --bins --release --target $$t $(BACKEND_BUILD_FLAGS) && cd ..) ; \
 	done
@@ -167,23 +154,23 @@ build-debug:
 
 .PHONY: build-win7
 build-win7:
-	for t in $(TARGETS_WIN7_BACKEND) ; do \
-		w7t=$$(sed -e 's/windows/win7/' <<< $$t); \
+	@echo "Checking the backend toolchain for a Win7 target"
+	$(MAKE) -C $(TOOLCHAIN_WIN7_RUST_DIR)   \
+		TAG=$(TOOLCHAIN_WIN7_TAG)           \
+		TOOLCHAIN=$(TOOLCHAIN_WIN7_BACKEND) \
+		TARGETS="$(TARGETS_WIN7_BACKEND)"
+	@for t in $(TARGETS_WIN7_BACKEND) ; do  \
 		echo ; echo "# Building release backend library for $$t with $(TOOLCHAIN_WIN7_BACKEND)" ; echo ; \
 		(cd backend && \
-                 sed 's/version = 4/version = 3/' -i Cargo.lock && \
-		 RUSTFLAGS="$(BACKEND_WIN7_LIB_RUST_FLAGS)" \
-		 CARGO_TARGET_DIR="$(BACKEND_WIN7_TARGET_DIR)" \
+		 RUSTFLAGS="$(BACKEND_RELEASE_LIB_RUST_FLAGS)" \
 		 cargo +$(TOOLCHAIN_WIN7_BACKEND) build --lib --release --target $$t \
 		) || exit 1 ; \
 		echo ; echo "# Building release backend binary for $$t with $(TOOLCHAIN_WIN7_BACKEND)" ; echo ; \
 		(cd backend && \
-		 RUSTFLAGS="$(BACKEND_WIN7_BIN_RUST_FLAGS)" \
-		 CARGO_TARGET_DIR="$(BACKEND_WIN7_TARGET_DIR)" \
+		 RUSTFLAGS="$(BACKEND_RELEASE_BIN_RUST_FLAGS)" \
 		 cargo +$(TOOLCHAIN_WIN7_BACKEND) build --bins --release --target $$t \
 		) ; \
 	done
-	
 
 #############
 
@@ -207,6 +194,9 @@ cargo-fmt:
 	@for c in common frontend backend standalone ; do \
 		(cd $$c && $@ +nightly && cd ..) || exit 1 ; \
 	done
+
+print-%:
+	@echo $*=$($*)
 
 %:
 	@for c in common frontend backend standalone ; do \
