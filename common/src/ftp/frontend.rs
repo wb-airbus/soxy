@@ -132,7 +132,7 @@ fn cmd_retr(
     fpath.push(path);
     to_data.send(protocol::DataCommand::Retr(fpath.to_string_lossy().into()))?;
     Ok(vec![
-        "125 Data connection already open; transfer starting".into()
+        "125 Data connection already open; transfer starting".into(),
     ])
 }
 
@@ -165,7 +165,7 @@ fn cmd_stor(
     fpath.push(path);
     to_data.send(protocol::DataCommand::Stor(fpath.to_string_lossy().into()))?;
     Ok(vec![
-        "125 Data connection already open; transfer starting".into()
+        "125 Data connection already open; transfer starting".into(),
     ])
 }
 

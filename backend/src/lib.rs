@@ -285,7 +285,7 @@ pub fn main(level: common::Level) {
 
 // rundll32.exe soxy.dll,Main
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(non_snake_case, unused_variables)]
 extern "system" fn Main() {
     loop {
@@ -293,7 +293,7 @@ extern "system" fn Main() {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(non_snake_case, unused_variables, clippy::missing_safety_doc)]
 pub unsafe extern "system" fn DllMain(
     dll_module: ws::Win32::Foundation::HINSTANCE,
