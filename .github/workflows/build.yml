@@ -7,7 +7,12 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
-
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to run on'
+        required: true
+        default: 'main'
 
 env:
   CARGO_TERM_COLOR: always
@@ -35,6 +40,9 @@ jobs:
 
       - name: Build release
         run: make release
+
+      - name: Build Win7 release
+        run: make win7
 
       - name: Gather artifacts
         run: |
