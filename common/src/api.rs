@@ -1,16 +1,26 @@
+#[cfg(feature = "service-input")]
+use crate::input;
 use crate::service;
 #[cfg(feature = "frontend")]
 use std::sync;
 use std::{fmt, io};
 
-pub const CHUNK_LENGTH: usize = 1600; // this is the max value
+// Adjustments for Dynamic Virtual Channels
+
+// This is the max size of what can be received
+// over Dynamic Virtual Channels
+pub const PDU_MAX_SIZE: usize = 1600;
+// The DYNVC_DATA_FIRST's PDU header can be up to 10 bytes long
+pub const PDU_DVC_HEADER_MAX_SIZE: usize = 10;
+// This is the max size of data that can be sent in *any* kind of PDU
+pub const PDU_DATA_MAX_SIZE: usize = PDU_MAX_SIZE - PDU_DVC_HEADER_MAX_SIZE;
 
 #[derive(Debug)]
 pub enum Error {
     Io(io::Error),
-    InvalidChunkType(Option<u8>),
+    InvalidChunkType(u8),
     InvalidChunkSize(usize),
-    PipelineBroken,
+    PipelineBroken(String),
 }
 
 impl fmt::Display for Error {
@@ -18,16 +28,12 @@ impl fmt::Display for Error {
         match self {
             Self::Io(e) => write!(fmt, "I/O error: {e}"),
             Self::InvalidChunkType(b) => {
-                if let Some(b) = b {
-                    write!(fmt, "invalid chunk type: 0x{b:x}")
-                } else {
-                    write!(fmt, "missing chunk type")
-                }
+                write!(fmt, "invalid chunk type: 0x{b:x}")
             }
             Self::InvalidChunkSize(s) => {
                 write!(fmt, "invalid chunk size: 0x{s:x}")
             }
-            Self::PipelineBroken => write!(fmt, "broken pipeline"),
+            Self::PipelineBroken(m) => write!(fmt, "broken pipeline: {m}"),
         }
     }
 }
@@ -39,16 +45,20 @@ impl From<io::Error> for Error {
 }
 
 impl From<crossbeam_channel::RecvError> for Error {
-    fn from(_e: crossbeam_channel::RecvError) -> Self {
-        Self::PipelineBroken
+    fn from(e: crossbeam_channel::RecvError) -> Self {
+        Self::PipelineBroken(e.to_string())
     }
 }
 
 impl<T> From<crossbeam_channel::SendError<T>> for Error {
-    fn from(_e: crossbeam_channel::SendError<T>) -> Self {
-        Self::PipelineBroken
+    fn from(e: crossbeam_channel::SendError<T>) -> Self {
+        Self::PipelineBroken(e.to_string())
     }
 }
+
+const ID_START: u8 = 0xF0;
+const ID_DATA: u8 = 0xF1;
+const ID_END: u8 = 0xF2;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ChunkType {
@@ -77,14 +87,10 @@ impl fmt::Display for ChunkType {
     }
 }
 
-const ID_START: u8 = 0x00;
-const ID_DATA: u8 = 0x01;
-const ID_END: u8 = 0x02;
-
-pub type ClientId = u32;
+pub type ClientId = u16;
 
 #[cfg(feature = "frontend")]
-static CLIENT_ID_COUNTER: sync::atomic::AtomicU32 = sync::atomic::AtomicU32::new(0);
+static CLIENT_ID_COUNTER: sync::atomic::AtomicU16 = sync::atomic::AtomicU16::new(0);
 
 #[cfg(feature = "frontend")]
 pub(crate) fn new_client_id() -> ClientId {
@@ -93,7 +99,7 @@ pub(crate) fn new_client_id() -> ClientId {
 
 pub struct Chunk(Vec<u8>);
 
-const SERIALIZE_OVERHEAD: usize = 4 + 1 + 2;
+const SERIALIZE_OVERHEAD: usize = 2 /* ClientId */ + 1 /* ChunkType */ + 2 /* len */;
 
 impl Chunk {
     fn new(
@@ -101,23 +107,26 @@ impl Chunk {
         client_id: ClientId,
         data: Option<&[u8]>,
     ) -> Result<Self, io::Error> {
-        let mut content = Vec::with_capacity(CHUNK_LENGTH);
-        content.extend_from_slice(&client_id.to_le_bytes());
-        content.push(chunk_type.serialized());
+        let payload_len = data.as_ref().map_or(0, |data| data.len());
+        if payload_len > (PDU_DATA_MAX_SIZE - SERIALIZE_OVERHEAD) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "payload is too large!",
+            ));
+        }
+        let mut content = vec![0u8; SERIALIZE_OVERHEAD + payload_len];
+        let id_bytes = client_id.to_le_bytes();
+        let mut offset = id_bytes.len();
+        content[0..offset].copy_from_slice(&id_bytes);
+        content[offset] = chunk_type.serialized();
+        offset += 1;
         if let Some(data) = data {
-            let payload_len = data.len();
-            if payload_len > (CHUNK_LENGTH - SERIALIZE_OVERHEAD) {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "payload is too large!",
-                ));
-            }
-            let payload_len = u16::try_from(payload_len)
+            let payload_len_u16 = u16::try_from(payload_len)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-            content.extend_from_slice(&u16::to_le_bytes(payload_len));
-            content.extend_from_slice(data);
-        } else {
-            content.extend_from_slice(&0u16.to_le_bytes());
+            let payload_len_bytes = u16::to_le_bytes(payload_len_u16);
+            content[offset..offset + payload_len_bytes.len()].copy_from_slice(&payload_len_bytes);
+            offset += payload_len_bytes.len();
+            content[offset..offset + payload_len].copy_from_slice(data);
         }
         Ok(Self(content))
     }
@@ -136,30 +145,30 @@ impl Chunk {
     }
 
     pub fn client_id(&self) -> ClientId {
-        let bytes = [self.0[0], self.0[1], self.0[2], self.0[3]];
-        u32::from_le_bytes(bytes)
+        let bytes = [self.0[0], self.0[1]];
+        u16::from_le_bytes(bytes)
     }
 
     pub fn chunk_type(&self) -> Result<ChunkType, Error> {
-        match self.0.get(4) {
-            Some(&ID_START) => Ok(ChunkType::Start),
-            Some(&ID_DATA) => Ok(ChunkType::Data),
-            Some(&ID_END) => Ok(ChunkType::End),
-            b => Err(Error::InvalidChunkType(b.copied())),
+        match self.0[2] {
+            ID_START => Ok(ChunkType::Start),
+            ID_DATA => Ok(ChunkType::Data),
+            ID_END => Ok(ChunkType::End),
+            b => Err(Error::InvalidChunkType(b)),
         }
     }
 
     fn payload_len(&self) -> u16 {
-        let data_len_bytes = [self.0[5], self.0[6]];
+        let data_len_bytes = [self.0[3], self.0[4]];
         u16::from_le_bytes(data_len_bytes)
     }
 
-    pub fn can_deserialize_from(data: &[u8]) -> Option<usize> {
+    pub const fn can_deserialize_from(data: &[u8]) -> Option<usize> {
         let len = data.len();
         if len < SERIALIZE_OVERHEAD {
             return None;
         }
-        let payload_len_bytes = [data[5], data[6]];
+        let payload_len_bytes = [data[3], data[4]];
         let payload_len = u16::from_le_bytes(payload_len_bytes);
         let expected_len = SERIALIZE_OVERHEAD + payload_len as usize;
         if len < expected_len {
@@ -175,7 +184,7 @@ impl Chunk {
 
     pub fn deserialize(content: Vec<u8>) -> Result<Self, Error> {
         let len = content.len();
-        if !(SERIALIZE_OVERHEAD..=CHUNK_LENGTH).contains(&len) {
+        if !(SERIALIZE_OVERHEAD..=PDU_DATA_MAX_SIZE).contains(&len) {
             return Err(Error::InvalidChunkSize(len));
         }
         let res = Self(content);
@@ -191,7 +200,7 @@ impl Chunk {
     }
 
     pub const fn max_payload_length() -> usize {
-        CHUNK_LENGTH - SERIALIZE_OVERHEAD
+        PDU_DATA_MAX_SIZE - SERIALIZE_OVERHEAD
     }
 
     pub fn payload(&self) -> &[u8] {
@@ -216,7 +225,13 @@ impl fmt::Display for Chunk {
     }
 }
 
-pub enum ChunkControl {
+pub enum Message {
     Chunk(Chunk),
+    #[cfg(feature = "service-input")]
+    InputSetting(input::InputSetting),
+    #[cfg(feature = "service-input")]
+    InputAction(input::InputAction),
+    #[cfg(feature = "service-input")]
+    ResetClient,
     Shutdown,
 }

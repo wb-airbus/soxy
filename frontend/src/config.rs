@@ -9,7 +9,6 @@ pub enum Error {
     Deserialization(toml::de::Error),
     Io(io::Error),
     Serialization(toml::ser::Error),
-    UnknownService(String),
 }
 
 impl From<toml::de::Error> for Error {
@@ -36,9 +35,12 @@ impl fmt::Display for Error {
             Self::Deserialization(e) => write!(f, "deserialization error: {e}"),
             Self::Io(e) => write!(f, "I/O error: {e}"),
             Self::Serialization(e) => write!(f, "serialization error: {e}"),
-            Self::UnknownService(s) => write!(f, "unknown service {s:?}"),
         }
     }
+}
+
+fn default_channel() -> String {
+    common::VIRTUAL_CHANNEL_DEFAULT_NAME.into()
 }
 
 fn default_log_level() -> String {
@@ -52,11 +54,9 @@ fn default_log_level() -> String {
     }
 }
 
-static LOG_FILE: &str = "soxy.log";
-
 fn default_log_file() -> Option<String> {
     let mut path = env::temp_dir();
-    path.push(LOG_FILE);
+    path.push(format!("{}.log", env!("CARGO_CRATE_NAME")));
     path.to_str().map(string::ToString::to_string)
 }
 
@@ -65,7 +65,7 @@ const fn default_true() -> bool {
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
-pub(crate) struct Log {
+pub struct Log {
     #[serde(default = "default_log_level")]
     level: String,
     #[serde(default = "default_log_file")]
@@ -82,7 +82,7 @@ impl Default for Log {
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
-pub(crate) struct Service {
+pub struct Service {
     pub name: String,
     #[serde(default = "default_true")]
     pub enabled: bool,
@@ -92,35 +92,52 @@ pub(crate) struct Service {
     pub port: Option<u16>,
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
+pub struct Forward {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub ip: String,
+    #[serde(default)]
+    pub port: u16,
+    #[serde(default)]
+    pub destination: String,
+}
+
 fn default_services() -> Vec<Service> {
     service::SERVICES
         .iter()
+        .filter(|s| !s.internal())
         .map(|s| Service {
             name: s.name().to_string(),
             enabled: true,
             ip: None,
-            port: s.tcp_frontend().map(service::TcpFrontend::default_port),
+            port: None,
         })
         .collect()
 }
 
-static CONFIG_FILE_NAME: &str = "soxy.toml";
-
 #[derive(serde::Deserialize, serde::Serialize)]
-pub(crate) struct Config {
+pub struct Config {
+    #[serde(default = "default_channel")]
+    pub channel: String,
     pub ip: String,
     #[serde(default)]
     pub log: Log,
     #[serde(default = "default_services")]
     pub services: Vec<Service>,
+    #[serde(default)]
+    pub forward: Option<Vec<Forward>>,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
+            channel: default_channel(),
             ip: "127.0.0.1".into(),
             log: Log::default(),
             services: default_services(),
+            forward: None,
         }
     }
 }
@@ -130,7 +147,7 @@ impl Config {
         let mut path = dirs::config_dir()
             .ok_or_else(|| Error::Io(io::Error::other("missing configuration directory")))?;
 
-        path.push(CONFIG_FILE_NAME);
+        path.push(format!("{}.toml", env!("CARGO_CRATE_NAME")));
 
         common::debug!("try to read configuration file at {:?}", path.display());
 
@@ -145,14 +162,14 @@ impl Config {
         let mut data = String::new();
         file.read_to_string(&mut data)?;
 
-        Ok(Some(Config::parse(&data)?))
+        Ok(Some(Self::parse(&data)?))
     }
 
     pub fn save(&self) -> Result<(), Error> {
         let mut path = dirs::config_dir()
             .ok_or_else(|| Error::Io(io::Error::other("missing configuration directory")))?;
 
-        path.push(CONFIG_FILE_NAME);
+        path.push(format!("{}.toml", env!("CARGO_CRATE_NAME")));
 
         common::debug!("try to write configuration file at {:?}", path.display());
 
@@ -170,7 +187,7 @@ impl Config {
         common::Level::try_from(self.log.level.as_str()).unwrap_or(common::Level::Info)
     }
 
-    pub fn log_file(&self) -> Option<&String> {
+    pub const fn log_file(&self) -> Option<&String> {
         self.log.file.as_ref()
     }
 

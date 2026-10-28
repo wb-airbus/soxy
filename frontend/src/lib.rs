@@ -1,35 +1,35 @@
-use common::{api, service};
-use std::{fmt, io, net, str::FromStr, sync, thread};
-
-mod config;
-mod control;
-mod svc;
+use common::{api, channel, frontend, service};
+use std::{fmt, net, str::FromStr, sync, thread};
 #[cfg(target_os = "windows")]
-mod windows;
+use windows as w;
 
-pub enum Error {
-    Api(api::Error),
+#[cfg(all(any(feature = "dvc", feature = "svc"), feature = "service-input"))]
+mod client;
+mod config;
+#[cfg(any(feature = "dvc", feature = "svc"))]
+mod control;
+#[cfg(any(feature = "dvc", feature = "svc"))]
+mod vc;
+
+enum Error {
+    Binding(String),
     Config(config::Error),
-    Io(io::Error),
-    PipelineBroken,
-    Svc(svc::Error),
+    #[cfg(any(feature = "dvc", feature = "svc"))]
+    Control(control::Error),
+    #[cfg(any(feature = "dvc", feature = "svc"))]
+    Vc(vc::Error),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            Self::Api(e) => write!(f, "API error: {e}"),
+            Self::Binding(e) => write!(f, "binding error: {e}"),
             Self::Config(e) => write!(f, "configuration error: {e}"),
-            Self::Io(e) => write!(f, "I/O error: {e}"),
-            Self::PipelineBroken => write!(f, "broken pipeline"),
-            Self::Svc(e) => write!(f, "virtual channel error: {e}"),
+            #[cfg(any(feature = "dvc", feature = "svc"))]
+            Self::Control(e) => write!(f, "control error: {e}"),
+            #[cfg(any(feature = "dvc", feature = "svc"))]
+            Self::Vc(e) => write!(f, "virtual channel error: {e}"),
         }
-    }
-}
-
-impl From<api::Error> for Error {
-    fn from(e: api::Error) -> Self {
-        Self::Api(e)
     }
 }
 
@@ -39,72 +39,30 @@ impl From<config::Error> for Error {
     }
 }
 
-impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Self {
-        Self::Io(e)
+#[cfg(any(feature = "dvc", feature = "svc"))]
+impl From<control::Error> for Error {
+    fn from(e: control::Error) -> Self {
+        Self::Control(e)
     }
 }
 
-impl From<crossbeam_channel::RecvError> for Error {
-    fn from(_e: crossbeam_channel::RecvError) -> Self {
-        Self::PipelineBroken
+#[cfg(any(feature = "dvc", feature = "svc"))]
+impl From<vc::Error> for Error {
+    fn from(e: vc::Error) -> Self {
+        Self::Vc(e)
     }
 }
 
-impl<T> From<crossbeam_channel::SendError<T>> for Error {
-    fn from(_e: crossbeam_channel::SendError<T>) -> Self {
-        Self::PipelineBroken
+static CONFIG: sync::OnceLock<config::Config> = sync::OnceLock::new();
+
+#[cfg(any(feature = "dvc", feature = "svc"))]
+static CONTROL: sync::LazyLock<control::Control> = sync::LazyLock::new(control::Control::new);
+
+fn bootstrap() -> Result<&'static config::Config, Error> {
+    if let Some(config) = CONFIG.get() {
+        return Ok(config);
     }
-}
 
-impl From<svc::Error> for Error {
-    fn from(e: svc::Error) -> Self {
-        Self::Svc(e)
-    }
-}
-
-pub(crate) static SVC_TO_CONTROL: sync::OnceLock<crossbeam_channel::Sender<svc::Response>> =
-    sync::OnceLock::new();
-
-fn svc_commander(control: &crossbeam_channel::Receiver<svc::Command>) -> Result<(), Error> {
-    loop {
-        match control.recv()? {
-            svc::Command::Open => {
-                if let Some(svc) = svc::SVC.write().unwrap().as_mut() {
-                    if let Err(e) = svc.open() {
-                        common::error!("SVC open failed: {e}");
-                    }
-                } else {
-                    common::error!("SVC not initialized");
-                }
-            }
-            svc::Command::SendChunk(chunk) => {
-                if let Some(svc) = svc::SVC.read().unwrap().as_ref() {
-                    if let Err(e) = svc.write(chunk.serialized()) {
-                        common::error!("SVC write failed: {e}");
-                    }
-                } else {
-                    common::error!("SVC not initialized");
-                }
-            }
-            svc::Command::Close => {
-                if let Some(svc) = svc::SVC.write().unwrap().as_mut() {
-                    if let Err(e) = svc.close() {
-                        common::error!("SVC close failed: {e}");
-                    }
-                } else {
-                    common::error!("SVC not initialized");
-                }
-            }
-        }
-    }
-}
-
-#[allow(clippy::missing_panics_doc)]
-pub fn init(
-    frontend_channel: service::Channel,
-    backend_to_frontend: crossbeam_channel::Receiver<api::ChunkControl>,
-) -> Result<(), Error> {
     let config = match config::Config::read()? {
         None => {
             let config = config::Config::default();
@@ -114,39 +72,100 @@ pub fn init(
         Some(config) => config,
     };
 
+    #[cfg(target_os = "windows")]
+    let _ = unsafe { w::Win32::System::Console::AllocConsole() };
+
     common::init_logs(config.log_level(), config.log_file());
 
-    common::debug!("initializing frontend");
+    common::log_package_infos!();
 
-    let servers = config.services.into_iter().filter(|s| s.enabled).try_fold(
+    common::debug!("bootstrapping frontend");
+
+    Ok(CONFIG.get_or_init(|| config))
+}
+
+#[allow(clippy::missing_panics_doc)]
+fn start_res(
+    config: &config::Config,
+    frontend_channel: channel::Channel,
+    backend_to_frontend: crossbeam_channel::Receiver<api::Message>,
+) -> Result<(), Error> {
+    let servers = config.services.iter().filter(|s| s.enabled).try_fold(
         vec![],
-        |mut servers, service| {
-            let ip = net::IpAddr::from_str(&service.ip.unwrap_or(config.ip.clone()))
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-            let port = service.port;
-            let service = service::lookup(service.name.as_str())
-                .ok_or(Error::Config(config::Error::UnknownService(service.name)))?;
-            let port = port
-                .or(service
-                    .tcp_frontend()
-                    .map(service::TcpFrontend::default_port))
-                .ok_or(Error::Config(config::Error::UnknownService(
-                    service.name().to_string(),
-                )))?;
+        |mut servers, service_conf| match service::lookup(service_conf.name.as_str()) {
+            None => {
+                common::error!("unknown service {}", service_conf.name);
+                Ok(servers)
+            }
+            Some(service) => {
+                if service.internal() {
+                    common::error!("service {} is an internal service", service_conf.name);
+                    Ok(servers)
+                } else {
+                    match service.frontend().and_then(frontend::Frontend::tcp) {
+                        None => Ok::<_, Error>(servers),
+                        Some(frontend::FrontendTcp { default_port, .. }) => {
+                            let ip = net::IpAddr::from_str(
+                                &service_conf.ip.clone().unwrap_or(config.ip.clone()),
+                            )
+                            .map_err(|e| Error::Binding(e.to_string()))?;
+                            let port = service_conf.port.unwrap_or(*default_port);
+                            let sockaddr = net::SocketAddr::new(ip, port);
 
-            let sockaddr = net::SocketAddr::new(ip, port);
-            let server = common::service::TcpFrontendServer::bind(service, sockaddr)?;
+                            let server = frontend::FrontendTcpServer::bind(service, sockaddr, None)
+                                .map_err(|e| Error::Binding(e.to_string()))?;
 
-            servers.push(server);
+                            servers.push(server);
 
-            Ok::<_, Error>(servers)
+                            Ok(servers)
+                        }
+                    }
+                }
+            }
         },
     )?;
+
+    #[cfg(not(feature = "service-forward"))]
+    {
+        if config.forward.as_ref().is_some_and(|v| !v.is_empty()) {
+            common::error!(
+                "ignoring port forwarding entries has support of port forwarding is not enabled"
+            );
+        }
+    }
+
+    #[cfg(feature = "service-forward")]
+    let servers = match config.forward.as_ref() {
+        None => servers,
+        Some(forwards) => forwards.iter().filter(|s| s.enabled).try_fold(
+            servers,
+            |mut servers, forward_conf| {
+                let ip = net::IpAddr::from_str(&forward_conf.ip)
+                    .map_err(|e| Error::Binding(e.to_string()))?;
+                let port = forward_conf.port;
+                let sockaddr = net::SocketAddr::new(ip, port);
+
+                let server = frontend::FrontendTcpServer::bind(
+                    &common::forward::SERVICE,
+                    sockaddr,
+                    Some(forward_conf.destination.clone()),
+                )
+                .map_err(|e| Error::Binding(e.to_string()))?;
+
+                servers.push(server);
+
+                Ok::<_, Error>(servers)
+            },
+        )?,
+    };
 
     thread::Builder::new()
         .name("frontend".into())
         .spawn(move || {
             thread::scope(|scope| {
+                #[cfg(any(feature = "dvc", feature = "svc"))]
+                CONTROL.start(scope);
+
                 for server in &servers {
                     thread::Builder::new()
                         .name(server.service().name().to_string())
@@ -160,12 +179,11 @@ pub fn init(
                         .unwrap();
                 }
 
-                if let Err(e) =
-                    frontend_channel.start(service::Kind::Frontend, &backend_to_frontend)
+                if let Err(e) = frontend_channel.run(service::Kind::Frontend, &backend_to_frontend)
                 {
-                    common::error!("frontend error: {e}");
+                    common::error!("frontend channel stopped: {e}");
                 } else {
-                    common::debug!("frontend terminated");
+                    common::debug!("frontend channel stopped");
                 }
             });
         })
@@ -174,41 +192,30 @@ pub fn init(
     Ok(())
 }
 
-pub(crate) fn start() {
-    if SVC_TO_CONTROL.get().is_some() {
-        return;
-    }
+#[cfg(any(feature = "dvc", feature = "svc"))]
+fn init() {
+    match bootstrap() {
+        Err(e) => {
+            eprintln!("{e}");
+        }
+        Ok(config) => {
+            common::debug!("init frontend");
 
-    common::debug!("initializing frontend");
+            if let Some(connector) = CONTROL.take_frontend_connector() {
+                let services = channel::Channel::new(connector.send);
 
-    let (
-        control,
-        frontend_to_svc_send,
-        svc_to_frontend_receive,
-        control_to_svc_send,
-        control_to_svc_receive,
-    ) = control::Control::new();
-
-    SVC_TO_CONTROL.get_or_init(|| control_to_svc_send);
-
-    thread::Builder::new()
-        .name("svc_commander".into())
-        .spawn(move || {
-            if let Err(e) = svc_commander(&control_to_svc_receive) {
-                common::error!("svc_commander error: {e}");
+                if let Err(e) = start_res(config, services, connector.recv) {
+                    common::error!("frontend init: {e}");
+                }
             }
-            common::debug!("svc_commander terminated");
-        })
-        .unwrap();
-
-    let services = service::Channel::new(frontend_to_svc_send);
-
-    if let Err(e) = init(services, svc_to_frontend_receive) {
-        common::error!("init error: {e}");
+        }
     }
+}
 
-    thread::Builder::new()
-        .name("control".into())
-        .spawn(|| control.start())
-        .unwrap();
+pub fn start(
+    frontend_channel: channel::Channel,
+    backend_to_frontend: crossbeam_channel::Receiver<api::Message>,
+) -> Result<(), String> {
+    let config = bootstrap().map_err(|e| e.to_string())?;
+    start_res(config, frontend_channel, backend_to_frontend).map_err(|e| e.to_string())
 }

@@ -1,21 +1,46 @@
 use std::ffi;
 #[cfg(feature = "log")]
 use std::fs;
+use std::mem;
 
 pub mod api;
+pub mod channel;
+#[cfg(feature = "frontend")]
+pub mod frontend;
+#[cfg(feature = "service-input")]
+pub mod input;
+mod rdp;
 pub mod service;
 
+#[cfg(feature = "service-clipboard")]
 mod clipboard;
+#[cfg(feature = "service-command")]
 mod command;
+#[cfg(feature = "service-forward")]
+pub mod forward;
+#[cfg(feature = "service-ftp")]
 mod ftp;
+#[cfg(feature = "service-socks5")]
 mod socks5;
+#[cfg(feature = "service-stage0")]
 mod stage0;
 
-mod log;
-#[cfg(feature = "backend")]
+mod ilog;
 mod util;
 
-pub const VIRTUAL_CHANNEL_NAME: &ffi::CStr = c"SOXY";
+pub const VIRTUAL_CHANNEL_DEFAULT_NAME: &str = "SOXY";
+
+pub fn virtual_channel_name(name: &str) -> Result<[ffi::c_char; 8], String> {
+    if name.len() > 7 {
+        return Err("channel name is too long (> 7)".into());
+    }
+
+    let mut channel_name = [0; 8];
+
+    channel_name[..name.len()].copy_from_slice(name.as_bytes());
+
+    Ok(unsafe { mem::transmute::<[u8; 8], [i8; 8]>(channel_name) })
+}
 
 pub enum Level {
     Off,
@@ -46,15 +71,15 @@ impl<'a> TryFrom<&'a str> for Level {
 pub const fn init_logs(_level: Level, _file: Option<&String>) {}
 
 #[cfg(feature = "log")]
-impl Into<simplelog::LevelFilter> for Level {
-    fn into(self) -> simplelog::LevelFilter {
-        match self {
-            Self::Off => simplelog::LevelFilter::Off,
-            Self::Error => simplelog::LevelFilter::Error,
-            Self::Warn => simplelog::LevelFilter::Warn,
-            Self::Info => simplelog::LevelFilter::Info,
-            Self::Debug => simplelog::LevelFilter::Debug,
-            Self::Trace => simplelog::LevelFilter::Trace,
+impl From<Level> for simplelog::LevelFilter {
+    fn from(level: Level) -> Self {
+        match level {
+            Level::Off => Self::Off,
+            Level::Error => Self::Error,
+            Level::Warn => Self::Warn,
+            Level::Info => Self::Info,
+            Level::Debug => Self::Debug,
+            Level::Trace => Self::Trace,
         }
     }
 }
@@ -69,6 +94,8 @@ pub fn init_logs(level: Level, file: Option<&String>) {
         .set_thread_level(simplelog::LevelFilter::Error)
         .set_thread_mode(simplelog::ThreadLogMode::Names)
         .set_time_format_rfc2822()
+        .set_time_offset_to_local()
+        .unwrap_or_else(|e| e)
         .build();
 
     let mut loggers: Vec<Box<dyn simplelog::SharedLogger>> = vec![simplelog::TermLogger::new(
@@ -78,17 +105,28 @@ pub fn init_logs(level: Level, file: Option<&String>) {
         simplelog::ColorChoice::Auto,
     )];
 
-    if let Some(file) = file {
-        if let Ok(file) = fs::File::options()
+    if let Some(file) = file
+        && let Ok(file) = fs::File::options()
             .create(true)
             .append(false)
             .truncate(true)
             .write(true)
             .open(file)
-        {
-            loggers.push(simplelog::WriteLogger::new(level_filter, config, file));
-        }
+    {
+        loggers.push(simplelog::WriteLogger::new(level_filter, config, file));
     }
 
     let _ = simplelog::CombinedLogger::init(loggers);
+}
+
+#[macro_export]
+macro_rules! log_package_infos {
+    () => {
+        #[cfg(feature = "log")]
+        log::info!(
+            "{} version {}",
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION")
+        );
+    };
 }

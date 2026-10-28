@@ -1,9 +1,9 @@
 use super::protocol;
-use crate::service;
+use crate::rdp;
 use copyrs::Clipboard;
 use std::{borrow, io};
 
-pub(crate) fn handler(mut stream: service::RdpStream<'_>) -> Result<(), io::Error> {
+pub fn handler(mut stream: rdp::RdpStream<'_>) -> Result<(), io::Error> {
     crate::debug!("starting");
 
     loop {
@@ -29,7 +29,8 @@ pub(crate) fn handler(mut stream: service::RdpStream<'_>) -> Result<(), io::Erro
                                 protocol::Response::Failed.send(&mut stream)?;
                             }
                             copyrs::ClipboardContentKind::Text => {
-                                protocol::Response::Text(content.data).send(&mut stream)?;
+                                let text = String::from_utf8_lossy(&content.data).to_string();
+                                protocol::Response::Text(text).send(&mut stream)?;
                             }
                         },
                     },
@@ -45,7 +46,7 @@ pub(crate) fn handler(mut stream: service::RdpStream<'_>) -> Result<(), io::Erro
                         protocol::Response::Failed.send(&mut stream)?;
                     }
                     Ok(mut clipboard) => {
-                        let value = borrow::Cow::Borrowed(value.as_slice());
+                        let value = borrow::Cow::from(value.as_bytes());
 
                         match clipboard.set_content(value, copyrs::ClipboardContentKind::Text) {
                             Err(e) => {

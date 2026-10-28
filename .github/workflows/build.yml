@@ -3,7 +3,6 @@ name: Build for Linux, Windows and macOS
 
 on:
   push:
-    branches: [ main ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
@@ -15,63 +14,202 @@ env:
 
 
 jobs:
-  build-linux-windows:
-    name: Build for Linux and Windows
+  build-linux:
+    name: Build for Linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Dependencies
-        run: sudo apt install gcc-multilib libc-dev clang mingw-w64 clang
+        run: |
+          sudo apt update
+          sudo apt full-upgrade
+          sudo apt install gcc-multilib libc-dev clang
 
       - name: Rustup update
         run: rustup update
 
-      - name: Setup
-        run: make setup
-
-      - name: Build debug
-        run: make debug
-
-      - name: Build release
-        run: make release
+      - name: Setup and build
+        run: |
+          TARGETS_FRONTEND="i686-unknown-linux-gnu x86_64-unknown-linux-gnu" \
+          TARGETS_BACKEND="i686-unknown-linux-gnu x86_64-unknown-linux-gnu" \
+          TARGETS_STANDALONE="i686-unknown-linux-gnu x86_64-unknown-linux-gnu" \
+          TARGETS_SOXYREG="" \
+          make setup debug release
 
       - name: Build Win7 release
         run: make win7
 
       - name: Gather artifacts
         run: |
-          mkdir artifacts
-          mv debug release artifacts/
+          mkdir -p artifacts
+          cp -R debug release artifacts/
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: linux-windows
+          name: linux
           path: artifacts
           retention-days: 0
 
 
-  build-frontend-macos-arm64:
-    name: Build frontend for macOS arm64
-    runs-on: macos-latest
+  build-windows:
+    name: Build for Windows
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Dependencies
+        run: |
+          sudo apt update
+          sudo apt full-upgrade
+          sudo apt install gcc-multilib libc-dev clang mingw-w64
 
       - name: Rustup update
         run: rustup update
 
-      - name: Build frontend debug
-        run: cd frontend ; cargo build --features=log
+      - name: Setup and build (mingw)
+        run: |
+          TARGETS_FRONTEND="i686-pc-windows-gnu x86_64-pc-windows-gnu" \
+            TARGETS_BACKEND="i686-pc-windows-gnu x86_64-pc-windows-gnu" \
+            TARGETS_STANDALONE="i686-pc-windows-gnu x86_64-pc-windows-gnu" \
+            TARGETS_SOXYREG="i686-pc-windows-gnu x86_64-pc-windows-gnu" \
+            make setup debug release
 
-      - name: Build frontend release
-        run: cd frontend ; cargo build --release
+      - name: Gather artifacts
+        run: |
+          mkdir -p artifacts
+          cp -R debug release artifacts/
 
-      - name: Build standalone debug
-        run: cd standalone ; cargo build --features=log
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: artifacts
+          retention-days: 0
 
-      - name: Build standalone release
-        run: cd standalone ; cargo build --release --features=log
+
+  build-windows-llvm:
+    name: Build for Windows LLVM-mingw
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Dependencies
+        run: |
+          sudo apt update
+          sudo apt full-upgrade
+          sudo apt install gcc-multilib libc-dev clang
+
+      - name: Rustup update
+        run: rustup update
+
+      - name: Setup and build (llvm-mingw)
+        run: |
+          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20260826/llvm-mingw-20260826-ucrt-ubuntu-22.04-x86_64.tar.xz
+          tar xaf llvm-mingw-20260826-ucrt-ubuntu-22.04-x86_64.tar.xz
+          PATH=$PATH:$(pwd)/llvm-mingw-20260826-ucrt-ubuntu-22.04-x86_64/bin \
+            TARGETS_FRONTEND="i686-pc-windows-gnullvm x86_64-pc-windows-gnullvm" \
+            TARGETS_BACKEND="i686-pc-windows-gnullvm x86_64-pc-windows-gnullvm" \
+            TARGETS_STANDALONE="i686-pc-windows-gnullvm x86_64-pc-windows-gnullvm" \
+            TARGETS_SOXYREG="i686-pc-windows-gnullvm x86_64-pc-windows-gnullvm" \
+            make setup debug release
+
+      - name: Gather artifacts
+        run: |
+          mkdir -p artifacts
+          cp -R debug release artifacts/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-llvm
+          path: artifacts
+          retention-days: 0
+
+
+  build-win7:
+    name: Build for Windows 7
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Dependencies
+        run: |
+          sudo apt update
+          sudo apt full-upgrade
+          sudo apt install gcc-multilib libc-dev clang mingw-w64
+
+      - name: Rustup update
+        run: rustup update
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Add win7 toolchain env vars
+        run: |
+          {
+            # Gotcha: if any overrides are used below in the call to
+            # `make win7`, they need to be reflected here as well.
+            make --no-print-directory print-TOOLCHAIN_WIN7_BACKEND
+            make --no-print-directory -C win7-rustc print-RUST_STAGE2_DIR
+          } >> $GITHUB_ENV
+
+      # Use a cache action to avoid rebuilding the compiler every time
+      # the CI runs
+      - name: Cache Win7 rustc
+        id: win7-rustc
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.RUST_STAGE2_DIR }}
+          key: |
+            ${{ runner.os }}-rust-toolchain-${{ env.TOOLCHAIN_WIN7_BACKEND }}
+
+      # If the cache was hit, register the cached compiler with rustup
+      - if: ${{ steps.win7-rustc.outputs.cache-hit == 'true' }}
+        name: Register cached toolchain
+        run: |
+          make -C win7-rustc register-toolchain \
+            TOOLCHAIN=${{ env.TOOLCHAIN_WIN7_BACKEND }}
+      
+      - name: Build Win7 release
+        run: make setup win7
+
+      - name: Gather artifacts
+        run: |
+          mkdir -p artifacts
+          cp -R release artifacts/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: win7
+          path: artifacts
+          retention-days: 0
+
+
+  build-macos-arm64:
+    name: Build for macOS arm64
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Rustup update
+        run: rustup update
+
+      - name: Build frontend
+        run: make build-frontend-native
+
+      - name: Build standalone
+        run: make build-standalone-native
 
       - name: Gather artifacts
         run: |
@@ -84,36 +222,30 @@ jobs:
           mkdir -p artifacts/release/standalone/macos-arm64
           mv standalone/target/release/soxy_standalone artifacts/release/standalone/macos-arm64/
 
-      - name: Upload debug artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
         with:
           name: macos-arm64
           path: artifacts
           retention-days: 0
 
 
-  build-frontend-macos-x86_64:
-    name: Build frontend for macOS x86_64
-    runs-on: macos-13
+  build-macos-x86_64:
+    name: Build for macOS x86_64
+    runs-on: macos-15-intel
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Rustup update
         run: rustup update
 
-      - name: Build frontend debug
-        run: cd frontend ; cargo build --features=log
+      - name: Build frontend
+        run: make build-frontend-native
 
-      - name: Build frontend release
-        run: cd frontend ; cargo build --release
+      - name: Build standalone
+        run: make build-standalone-native
 
-      - name: Build standalone debug
-        run: cd standalone ; cargo build --features=log
-
-      - name: Build standalone release
-        run: cd standalone ; cargo build --release --features=log
-
-      - name: Gather  artifacts
+      - name: Gather artifacts
         run: |
           mkdir -p artifacts/debug/frontend/macos-x86_64
           mv frontend/target/debug/libsoxy.dylib artifacts/debug/frontend/macos-x86_64/
@@ -124,8 +256,8 @@ jobs:
           mkdir -p artifacts/release/standalone/macos-x86_64
           mv standalone/target/release/soxy_standalone artifacts/release/standalone/macos-x86_64/
 
-      - name: Upload debug artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
         with:
           name: macos-x86_64
           path: artifacts
@@ -135,11 +267,11 @@ jobs:
   package:
     name: Package artifacts
     runs-on: ubuntu-latest
-    needs: [ build-linux-windows, build-frontend-macos-arm64, build-frontend-macos-x86_64]
+    needs: [ build-linux, build-windows, build-windows-llvm, build-win7, build-macos-arm64, build-macos-x86_64 ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
           path: artifacts
@@ -148,19 +280,19 @@ jobs:
         run: |
           mkdir -p debug/soxy-debug-${{ env.SUFFIX }}
           mv artifacts/debug/* debug/soxy-debug-${{ env.SUFFIX }}/
-          cp LICENSE README.md debug/soxy-debug-${{ env.SUFFIX }}/
+          cp -r LICENSE README.md tools debug/soxy-debug-${{ env.SUFFIX }}/
           mkdir -p release/soxy-release-${{ env.SUFFIX }}
           mv artifacts/release/* release/soxy-release-${{ env.SUFFIX }}/
-          cp LICENSE README.md release/soxy-release-${{ env.SUFFIX }}/
+          cp -r LICENSE README.md tools release/soxy-release-${{ env.SUFFIX }}/
 
       - name: Upload debug artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: soxy-debug-${{ env.SUFFIX }}
           path: debug
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: soxy-release-${{ env.SUFFIX }}
           path: release

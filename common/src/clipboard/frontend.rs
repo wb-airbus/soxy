@@ -1,26 +1,50 @@
 use super::protocol;
-use crate::service;
+use crate::{api, channel, frontend, service};
 use std::{
     io::{self, BufRead, Write},
     net, thread,
 };
 
-pub(crate) fn tcp_handler<'a>(
-    _server: &service::TcpFrontendServer,
+// https://patorjk.com/software/taag/#p=display&h=0&v=0&f=Ogre&t=clipboard%0A
+const LOGO: &str = r"
+       _  _         _                              _
+  ___ | |(_) _ __  | |__    ___    __ _  _ __   __| |
+ / __|| || || '_ \ | '_ \  / _ \  / _` || '__| / _` |
+| (__ | || || |_) || |_) || (_) || (_| || |   | (_| |
+ \___||_||_|| .__/ |_.__/  \___/  \__,_||_|    \__,_|
+            |_|";
+
+const HELP: &str = r#"
+Available commands:
+- "read" or "get" to get remote clipboard content;
+- "write XXX" or "put XXX" to set remote clipboard content to XXX;
+- "exit" or "quit" to exit this intrerface.
+"#;
+
+const PROMPT: &str = "clipboard> ";
+
+pub fn tcp_handler<'a>(
+    _server: &frontend::FrontendTcpServer,
     _scope: &'a thread::Scope<'a, '_>,
     stream: net::TcpStream,
-    channel: &'a service::Channel,
-) -> Result<(), io::Error> {
+    channel: &'a channel::Channel,
+) -> Result<(), api::Error> {
     let lstream = stream.try_clone()?;
     let mut client_read = io::BufReader::new(lstream);
 
     let mut client_write = io::BufWriter::new(stream);
+
+    client_write.write_fmt(format_args!("{}\n{}\n{}\n", service::LOGO, LOGO, HELP))?;
+    client_write.flush()?;
 
     let mut rdp = channel.connect(&super::SERVICE)?;
 
     let mut line = String::new();
 
     loop {
+        client_write.write_all(PROMPT.as_bytes())?;
+        client_write.flush()?;
+
         let _ = client_read.read_line(&mut line)?;
 
         let cline = line
@@ -44,11 +68,11 @@ pub(crate) fn tcp_handler<'a>(
         crate::trace!("ARGS = {args:?}");
 
         match command.as_str() {
+            "" => (),
             "READ" | "GET" => {
                 protocol::Command::Read.send(&mut rdp)?;
                 match protocol::Response::receive(&mut rdp)? {
                     protocol::Response::Text(value) => {
-                        let value = String::from_utf8_lossy(&value);
                         writeln!(client_write, "ok {value:?}")?;
                     }
                     protocol::Response::Failed => {
@@ -58,7 +82,7 @@ pub(crate) fn tcp_handler<'a>(
                 }
             }
             "WRITE" | "PUT" => {
-                protocol::Command::WriteText(args.into_bytes()).send(&mut rdp)?;
+                protocol::Command::WriteText(args).send(&mut rdp)?;
                 match protocol::Response::receive(&mut rdp)? {
                     protocol::Response::WriteDone => {
                         writeln!(client_write, "ok")?;
@@ -70,7 +94,6 @@ pub(crate) fn tcp_handler<'a>(
                 }
             }
             "EXIT" | "QUIT" => {
-                let _ = rdp.disconnect();
                 let lstream = client_read.into_inner();
                 let _ = lstream.shutdown(net::Shutdown::Both);
                 return Ok(());

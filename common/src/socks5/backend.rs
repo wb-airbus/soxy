@@ -1,5 +1,5 @@
 use super::protocol;
-use crate::{service, util};
+use crate::{rdp, service, util};
 use std::{
     io::{self, Write},
     net,
@@ -12,11 +12,11 @@ fn encode_addr(addr: &net::SocketAddr) -> Result<Vec<u8>, io::Error> {
 
     match addr {
         net::SocketAddr::V4(ipv4) => {
-            data.write_all(&[0x01; 1])?;
+            data.write_all(&[1u8; 1])?;
             data.write_all(&ipv4.ip().octets())?;
         }
         net::SocketAddr::V6(ipv6) => {
-            data.write_all(&[0x04; 1])?;
+            data.write_all(&[4u8; 1])?;
             data.write_all(&ipv6.ip().octets())?;
         }
     }
@@ -25,7 +25,7 @@ fn encode_addr(addr: &net::SocketAddr) -> Result<Vec<u8>, io::Error> {
     Ok(data)
 }
 
-fn command_connect(mut stream: service::RdpStream<'_>, to_tcp: &str) -> Result<(), io::Error> {
+fn command_connect(mut stream: rdp::RdpStream<'_>, to_tcp: &str) -> Result<(), io::Error> {
     crate::info!("connecting to {to_tcp:#?}");
 
     match net::TcpStream::connect(to_tcp) {
@@ -52,12 +52,12 @@ fn command_connect(mut stream: service::RdpStream<'_>, to_tcp: &str) -> Result<(
 
             crate::debug!("starting stream copy");
 
-            service::double_stream_copy(SERVICE_KIND, &super::SERVICE, stream, server)
+            service::double_stream_copy(SERVICE_KIND, &super::SERVICE, stream, server, true)
         }
     }
 }
 
-fn command_bind(mut stream: service::RdpStream<'_>) -> Result<(), io::Error> {
+fn command_bind(mut stream: rdp::RdpStream<'_>) -> Result<(), io::Error> {
     match util::find_best_address() {
         Err(e) => {
             crate::error!("failed to enumerate network interfaces: {e}");
@@ -102,6 +102,7 @@ fn command_bind(mut stream: service::RdpStream<'_>) -> Result<(), io::Error> {
                                         &super::SERVICE,
                                         stream,
                                         client,
+                                        true,
                                     )
                                 }
                             }
@@ -113,7 +114,7 @@ fn command_bind(mut stream: service::RdpStream<'_>) -> Result<(), io::Error> {
     }
 }
 
-pub(crate) fn handler(mut stream: service::RdpStream<'_>) -> Result<(), io::Error> {
+pub fn handler(mut stream: rdp::RdpStream<'_>) -> Result<(), io::Error> {
     crate::debug!("starting");
 
     let cmd = protocol::Command::receive(&mut stream)?;

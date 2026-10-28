@@ -1,0 +1,29 @@
+# Includes one of the default files in src/bootstrap/defaults
+#
+# The "compiler" profile favors a faster build of the compiler itself at the
+# expense of the performance of the compiler itself. Since the compiler being
+# built here is disproportionately more complex than Soxy, the trade-off skews
+# towards the shorter compiler build time.
+profile = "compiler"
+change-id = 138986
+
+# Turn lots of stuff off since all we want is the Win7 compiler
+[build]
+compiler-docs = false
+target = ["x86_64-win7-windows-gnu", "x86_64-unknown-linux-gnu"]
+host = ["x86_64-unknown-linux-gnu"]
+build-stage = 2
+
+[rust]
+debug-logging = false
+debug-assertions = false
+backtrace-on-ice = false
+incremental = false
+
+[llvm]
+download-ci-llvm = "if-unchanged"
+
+[target.x86_64-win7-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc" 
+cc = "x86_64-w64-mingw32-gcc"
+cxx = "x86_64-w64-mingw32-g++"

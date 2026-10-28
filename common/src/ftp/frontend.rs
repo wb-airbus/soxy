@@ -1,446 +1,195 @@
 use super::protocol;
-use crate::{api, service};
+use crate::{api, channel, frontend, service};
 use std::{
     io::{self, Write},
-    net, path, thread,
+    net, thread,
 };
 
-const SERVICE_KIND: service::Kind = service::Kind::Frontend;
-
-#[derive(Debug)]
-enum Command {
-    Cdup,
-    Cwd(String),
-    Dele(String),
-    Epsv,
-    Feat,
-    List,
-    Nlst,
-    Opts,
-    Pass,
-    Pasv,
-    Pwd,
-    Quit,
-    Retr(String),
-    Stor(String),
-    Size(String),
-    Type,
-    User,
-}
-
-impl Command {
-    fn read<R>(r: &mut R) -> Result<Option<Self>, io::Error>
-    where
-        R: io::BufRead,
-    {
-        let mut line = String::new();
-        let read = r.read_line(&mut line)?;
-        if read == 0 {
-            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "disconnected"));
-        }
-
-        let line = match line.strip_suffix("\r\n") {
-            None => return Ok(None),
-            Some(line) => line,
-        };
-
-        crate::debug!("{line:?}");
-
-        let (command, args) = line
-            .split_once(' ')
-            .map(|(command, args)| (command, args.to_string()))
-            .unwrap_or((line, String::new()));
-        let command = command.to_uppercase();
-
-        let command = match command.as_str() {
-            "CDUP" => Self::Cdup,
-            "CWD" => Self::Cwd(args),
-            "DELE" => Self::Dele(args),
-            "EPSV" => Self::Epsv,
-            "FEAT" => Self::Feat,
-            "LIST" => Self::List,
-            "NLST" => Self::Nlst,
-            "OPTS" => Self::Opts,
-            "PASS" => Self::Pass,
-            "PASV" => Self::Pasv,
-            "PWD" => Self::Pwd,
-            "QUIT" => Self::Quit,
-            "RETR" => Self::Retr(args),
-            "SIZE" => Self::Size(args),
-            "STOR" => Self::Stor(args),
-            "TYPE" => Self::Type,
-            "USER" => Self::User,
-            _ => return Ok(None),
-        };
-
-        Ok(Some(command))
-    }
-}
-
-fn cmd_cdup(current_path: &mut path::PathBuf) -> Vec<String> {
-    if current_path.pop() {
-        vec!["250 Directory successfully changed".into()]
-    } else {
-        vec!["550 Failed to change directory".into()]
-    }
-}
-
-fn cmd_dele(
-    to_data: &crossbeam_channel::Sender<protocol::DataCommand>,
-    from_data: &crossbeam_channel::Receiver<protocol::DataReply>,
-    current_path: &path::Path,
-    path: String,
-) -> Result<Vec<String>, api::Error> {
-    let mut fpath = current_path.to_path_buf();
-    fpath.push(path);
-    to_data.send(protocol::DataCommand::Dele(fpath.to_string_lossy().into()))?;
-    let reply = from_data.recv()?;
-    let res = if reply.is_ok() {
-        vec!["200 Command okay".into()]
-    } else {
-        vec!["550 Delete failed".into()]
-    };
-    Ok(res)
-}
-
-fn cmd_list(
-    to_data: &crossbeam_channel::Sender<protocol::DataCommand>,
-    current_path: &path::Path,
-) -> Result<Vec<String>, api::Error> {
-    to_data.send(protocol::DataCommand::List(
-        current_path.to_string_lossy().into(),
-    ))?;
-    Ok(vec!["150 Here comes the directory listing".into()])
-}
-
-fn cmd_nlst(
-    to_data: &crossbeam_channel::Sender<protocol::DataCommand>,
-    current_path: &path::Path,
-) -> Result<Vec<String>, api::Error> {
-    to_data.send(protocol::DataCommand::NLst(
-        current_path.to_string_lossy().into(),
-    ))?;
-    Ok(vec!["150 Here comes the directory listing".into()])
-}
-
-fn cmd_retr(
-    to_data: &crossbeam_channel::Sender<protocol::DataCommand>,
-    current_path: &path::Path,
-    path: String,
-) -> Result<Vec<String>, api::Error> {
-    let mut fpath = current_path.to_path_buf();
-    fpath.push(path);
-    to_data.send(protocol::DataCommand::Retr(fpath.to_string_lossy().into()))?;
-    Ok(vec![
-        "125 Data connection already open; transfer starting".into(),
-    ])
-}
-
-fn cmd_size(
-    to_data: &crossbeam_channel::Sender<protocol::DataCommand>,
-    from_data: &crossbeam_channel::Receiver<protocol::DataReply>,
-    current_path: &path::Path,
-    path: String,
-) -> Result<Vec<String>, api::Error> {
-    let mut fpath = current_path.to_path_buf();
-    fpath.push(path);
-    to_data.send(protocol::DataCommand::Size(fpath.to_string_lossy().into()))?;
-    let reply = from_data.recv()?;
-
-    let res = if let protocol::DataReply::SizeOk(size) = reply {
-        vec![format!("213 {size}")]
-    } else {
-        vec!["540 Invalid path".into()]
-    };
-
-    Ok(res)
-}
-
-fn cmd_stor(
-    to_data: &crossbeam_channel::Sender<protocol::DataCommand>,
-    current_path: &path::Path,
-    path: String,
-) -> Result<Vec<String>, api::Error> {
-    let mut fpath = current_path.to_path_buf();
-    fpath.push(path);
-    to_data.send(protocol::DataCommand::Stor(fpath.to_string_lossy().into()))?;
-    Ok(vec![
-        "125 Data connection already open; transfer starting".into(),
-    ])
-}
-
-fn control_loop<R>(
-    client: &mut R,
-    to_control: &crossbeam_channel::Sender<Vec<String>>,
-    to_data: &crossbeam_channel::Sender<protocol::DataCommand>,
-    from_data: &crossbeam_channel::Receiver<protocol::DataReply>,
-    server_ip: net::IpAddr,
-    data_port: u16,
-) -> Result<(), api::Error>
+fn parse_command<R>(r: &mut R) -> Result<Option<protocol::ControlCommand>, io::Error>
 where
     R: io::BufRead,
 {
-    let mut current_path = path::PathBuf::from("/");
-
-    to_control.send(vec!["220 Welcome".into()])?;
-
-    loop {
-        let reply = match Command::read(client)? {
-            None => vec!["500 Syntax error".into()],
-            Some(command) => {
-                crate::trace!("{command:?}");
-                match command {
-                    Command::Cdup => cmd_cdup(&mut current_path),
-                    Command::Cwd(path) => {
-                        let new_path = if path.starts_with('/') {
-                            path::PathBuf::from(path)
-                        } else {
-                            let mut res = current_path.clone();
-                            res.push(path);
-                            res
-                        };
-                        to_data.send(protocol::DataCommand::Cwd(
-                            new_path.to_string_lossy().into(),
-                        ))?;
-                        let reply = from_data.recv()?;
-                        if reply.is_ok() {
-                            current_path = new_path;
-                            vec!["250 Directory successfully changed".into()]
-                        } else {
-                            vec!["550 Failed to change directory".into()]
-                        }
-                    }
-                    Command::Dele(path) => cmd_dele(to_data, from_data, &current_path, path)?,
-                    Command::Epsv => vec![format!(
-                        "229 Entering Extended Passive Mode (|||{data_port}|)"
-                    )],
-                    Command::Feat => vec![
-                        "211-Features:".into(),
-                        " EPRT".into(),
-                        " EPSV".into(),
-                        " PASV".into(),
-                        " REST STREAM".into(),
-                        " SIZE".into(),
-                        " TVFS".into(),
-                        " UTF8".into(),
-                        "211 End".into(),
-                    ],
-                    Command::List => cmd_list(to_data, &current_path)?,
-                    Command::Nlst => cmd_nlst(to_data, &current_path)?,
-                    Command::Opts | Command::Type => vec!["200 Command okay".into()],
-                    Command::Pass => vec!["220 Login successful".into()],
-                    Command::Pasv => match &server_ip {
-                        net::IpAddr::V4(ip) => {
-                            let ip = ip.to_bits().to_be_bytes();
-                            let port = data_port.to_be_bytes();
-                            vec![format!(
-                                "227 Entering Passive Mode ({},{},{},{},{},{})",
-                                ip[0], ip[1], ip[2], ip[3], port[0], port[1]
-                            )]
-                        }
-                        net::IpAddr::V6(_) => {
-                            vec!["425 Can't open data connection".into()]
-                        }
-                    },
-                    Command::Pwd => vec![format!(
-                        "257 {:?} is the current directory",
-                        current_path.as_os_str().to_string_lossy()
-                    )],
-                    Command::Quit => return Ok(()),
-                    Command::Retr(path) => cmd_retr(to_data, &current_path, path)?,
-                    Command::Size(path) => cmd_size(to_data, from_data, &current_path, path)?,
-                    Command::Stor(path) => cmd_stor(to_data, &current_path, path)?,
-                    Command::User => vec!["331 Provide password".into()],
-                }
-            }
-        };
-
-        to_control.send(reply)?;
+    let mut line = String::new();
+    let read = r.read_line(&mut line)?;
+    if read == 0 {
+        return Err(io::Error::new(io::ErrorKind::BrokenPipe, "disconnected"));
     }
+
+    let Some(line) = line.strip_suffix("\r\n") else {
+        return Ok(None);
+    };
+
+    crate::debug!("{line:?}");
+
+    let (command, args) = line
+        .split_once(' ')
+        .map(|(command, args)| (command, args.to_string()))
+        .unwrap_or((line, String::new()));
+    let command = command.to_uppercase();
+
+    let command = match command.as_str() {
+        "CDUP" => protocol::ControlCommand::Cdup,
+        "CWD" => protocol::ControlCommand::Cwd(args),
+        "DELE" => protocol::ControlCommand::Dele(args),
+        "EPSV" => protocol::ControlCommand::Epsv,
+        "FEAT" => protocol::ControlCommand::Feat,
+        "LIST" => protocol::ControlCommand::List,
+        "NLST" => protocol::ControlCommand::Nlst,
+        "OPTS" => protocol::ControlCommand::Opts,
+        "PASS" => protocol::ControlCommand::Pass,
+        "PASV" => protocol::ControlCommand::Pasv,
+        "PWD" => protocol::ControlCommand::Pwd,
+        "QUIT" => protocol::ControlCommand::Quit,
+        "RETR" => protocol::ControlCommand::Retr(args),
+        "SIZE" => protocol::ControlCommand::Size(args),
+        "STOR" => protocol::ControlCommand::Stor(args),
+        "TYPE" => protocol::ControlCommand::Type,
+        "USER" => protocol::ControlCommand::User,
+        cmd => {
+            crate::warn!("command {cmd:?} not implemented");
+            return Ok(None);
+        }
+    };
+
+    Ok(Some(command))
 }
 
-fn data_transfer(
-    client: net::TcpStream,
-    mut rdp: service::RdpStream,
+fn data_command(
+    channel: &channel::Channel,
+    client: &mut net::TcpStream,
+    data_frontend: &net::TcpListener,
     cmd: &protocol::DataCommand,
-) -> Result<bool, io::Error> {
-    let mut status = false;
-
-    if cmd.is_upload() {
-        let _ = client.shutdown(net::Shutdown::Write);
-
-        let mut client = io::BufReader::new(client);
-        if let Err(e) = service::stream_copy(&mut client, &mut rdp) {
-            crate::debug!("error: {e}");
-        } else {
-            crate::debug!("stopped");
-            status = true;
-        }
-        let client = client.into_inner();
-        let _ = client.shutdown(net::Shutdown::Both);
-    } else {
-        let _ = client.shutdown(net::Shutdown::Read);
-
-        let mut client = io::BufWriter::new(client);
-        if let Err(e) = service::stream_copy(&mut rdp, &mut client) {
-            crate::debug!("error: {e}");
-        } else {
-            crate::debug!("stopped");
-            status = true;
-        }
-        let _ = client.flush();
-        if let Ok(client) = client.into_inner() {
-            let _ = client.shutdown(net::Shutdown::Both);
-        }
-    }
-
-    rdp.disconnect()?;
-
-    Ok(status)
-}
-
-fn data_loop<'a>(
-    data_server: &net::TcpListener,
-    from_control: &crossbeam_channel::Receiver<protocol::DataCommand>,
-    to_control: &crossbeam_channel::Sender<protocol::DataReply>,
-    to_client: &crossbeam_channel::Sender<Vec<String>>,
-    channel: &'a service::Channel,
-    scope: &'a thread::Scope<'a, '_>,
 ) -> Result<(), api::Error> {
-    loop {
-        let cmd = from_control.recv()?;
+    let mut backend = channel.connect(&super::SERVICE)?;
+    protocol::BackendMode::Data.send(&mut backend)?;
 
-        let mut rdp = channel.connect(&super::SERVICE)?;
+    cmd.send(&mut backend)?;
 
-        cmd.send(&mut rdp)?;
-
-        crate::trace!("{cmd}");
-
-        if cmd.is_ftp_control() {
-            to_control.send(protocol::DataReply::receive(&mut rdp)?)?;
-
-            let _ = rdp.disconnect();
-        } else {
-            let (client, client_addr) = data_server.accept()?;
-
-            crate::debug!("connection from {client_addr}");
-
-            let to_client = to_client.clone();
-            thread::Builder::new()
-                .name(format!(
-                    "{SERVICE_KIND} {} data {client_addr}",
-                    super::SERVICE
-                ))
-                .spawn_scoped(scope, move || match data_transfer(client, rdp, &cmd) {
-                    Err(e) => {
-                        crate::debug!("error {e}");
-                    }
-                    Ok(status) => {
-                        if status {
-                            let _ = to_client.send(vec!["226 Closing data connection".into()]);
-                        } else {
-                            let _ = to_client
-                                .send(vec!["426 Connection closed; transfer aborted".into()]);
-                        }
-                    }
-                })
-                .unwrap();
+    let is_upload = match cmd {
+        protocol::DataCommand::List(_) | protocol::DataCommand::Nlst(_) => {
+            client.write_all("150 Here comes the directory listing\r\n".as_bytes())?;
+            false
         }
-    }
-}
-
-fn to_control<W>(
-    from: &crossbeam_channel::Receiver<Vec<String>>,
-    client: &mut W,
-) -> Result<(), api::Error>
-where
-    W: io::Write,
-{
-    loop {
-        let msgs = from.recv()?;
-        for msg in msgs {
-            write!(client, "{msg}\r\n")?;
-            client.flush()?;
+        protocol::DataCommand::Retr(_) => {
+            client
+                .write_all("125 Data connection already open; transfer starting\r\n".as_bytes())?;
+            false
         }
-    }
-}
+        protocol::DataCommand::Stor(_) => {
+            client
+                .write_all("125 Data connection already open; transfer starting\r\n".as_bytes())?;
+            true
+        }
+    };
 
-pub(crate) fn tcp_handler<'a>(
-    server: &service::TcpFrontendServer,
-    scope: &'a thread::Scope<'a, '_>,
-    stream: net::TcpStream,
-    channel: &'a service::Channel,
-) -> Result<(), io::Error> {
-    let data_server = net::TcpListener::bind((server.ip, 0))?;
-    let data_port = data_server.local_addr().unwrap().port();
+    client.flush()?;
 
-    let (control_to_data_send, control_to_data_receive) = crossbeam_channel::bounded(1);
-    let (data_to_control_send, data_to_control_receive) = crossbeam_channel::bounded(1);
-    let (to_control_send, to_control_receive) = crossbeam_channel::bounded(1);
+    crate::debug!("accepting data on {}", data_frontend.local_addr()?);
+    let (data_client, _) = data_frontend.accept()?;
+    crate::debug!("data accepted");
 
-    let lstream = stream.try_clone().unwrap();
-    thread::Builder::new()
-        .name(format!(
-            "{SERVICE_KIND} {} control {}",
-            super::SERVICE,
-            stream
-                .peer_addr()
-                .map_or_else(|_| "<unknown>".into(), |a| a.to_string())
-        ))
-        .spawn_scoped(scope, move || {
-            let mut lstream = io::BufWriter::new(lstream);
-            if let Err(e) = to_control(&to_control_receive, &mut lstream) {
-                crate::debug!("error: {e}");
-            } else {
-                crate::debug!("stopped");
-            }
-            let _ = lstream.flush();
-            if let Ok(lstream) = lstream.into_inner() {
-                let _ = lstream.shutdown(net::Shutdown::Both);
-            }
-        })
-        .unwrap();
-
-    let lto_control_send = to_control_send.clone();
-    thread::Builder::new()
-        .name(format!(
-            "{SERVICE_KIND} {} data {}",
-            super::SERVICE,
-            stream
-                .peer_addr()
-                .map_or_else(|_| "<unknown>".into(), |a| a.to_string())
-        ))
-        .spawn_scoped(scope, move || {
-            if let Err(e) = data_loop(
-                &data_server,
-                &control_to_data_receive,
-                &data_to_control_send,
-                &lto_control_send,
-                channel,
-                scope,
-            ) {
-                crate::debug!("error: {e}");
-            } else {
-                crate::debug!("stopped");
-            }
-        })
-        .unwrap();
-
-    let mut stream = io::BufReader::new(stream);
-    if let Err(e) = control_loop(
-        &mut stream,
-        &to_control_send,
-        &control_to_data_send,
-        &data_to_control_receive,
-        server.ip,
-        data_port,
-    ) {
-        crate::debug!("error: {e}");
+    let res = if is_upload {
+        let mut data_client_read = io::BufReader::new(data_client);
+        let res = service::stream_copy(&mut data_client_read, &mut backend, false);
+        let _ = backend.flush();
+        res
     } else {
-        crate::debug!("stopped");
+        let mut data_client_write = io::BufWriter::new(data_client);
+        let res = service::stream_copy(&mut backend, &mut data_client_write, false);
+        let _ = data_client_write.flush();
+        res
+    };
+
+    match res {
+        Err(e) => {
+            crate::warn!("data command {cmd:?} failed: {e}");
+            client.write_all(b"426 Connection closed; transfer aborted\r\n")?;
+        }
+        Ok(()) => {
+            client.write_all(b"226 Closing data connection\r\n")?;
+        }
     }
-    let stream = stream.into_inner();
-    let _ = stream.shutdown(net::Shutdown::Both);
+
+    client.flush()?;
 
     Ok(())
+}
+
+pub fn tcp_handler<'a>(
+    server: &frontend::FrontendTcpServer,
+    _scope: &'a thread::Scope<'a, '_>,
+    mut client: net::TcpStream,
+    channel: &'a channel::Channel,
+) -> Result<(), api::Error> {
+    let data_frontend = net::TcpListener::bind((server.ip, 0))?;
+    let data_frontend_bind_port = data_frontend.local_addr().unwrap().port();
+
+    let client_read = client.try_clone()?;
+    let mut client_read = io::BufReader::new(client_read);
+
+    let mut backend = channel.connect(&super::SERVICE)?;
+    protocol::BackendMode::Control.send(&mut backend)?;
+
+    client.write_all(b"220 Welcome\r\n")?;
+    client.flush()?;
+
+    loop {
+        match parse_command(&mut client_read)? {
+            None => client.write_all(b"502 Command not implemented\r\n")?,
+            Some(command) => {
+                command.send(&mut backend)?;
+                let resp = protocol::ControlResponse::receive(&mut backend)?;
+                crate::trace!("response {resp:?}");
+                match resp {
+                    protocol::ControlResponse::Ok(c, msg) => {
+                        if let Some(msg) = msg {
+                            client.write_all(format!("{c} {msg}\r\n").as_bytes())?;
+                        } else {
+                            client.write_all(format!("{c} ControlCommand okay\r\n").as_bytes())?;
+                        }
+                    }
+                    protocol::ControlResponse::Error(c) => {
+                        client.write_all(format!("{c} Error\r\n").as_bytes())?;
+                    }
+                    protocol::ControlResponse::Data(cmd) => {
+                        data_command(channel, &mut client, &data_frontend, &cmd)?;
+                    }
+                    protocol::ControlResponse::Quit => {
+                        return Ok(());
+                    }
+                    protocol::ControlResponse::Feat => {
+                        client.write_all(b"211-Features:\r\n")?;
+                        client.write_all(b" EPRT\r\n")?;
+                        client.write_all(b" EPSV\r\n")?;
+                        client.write_all(b" PASV\r\n")?;
+                        client.write_all(b" REST STREAM\r\n")?;
+                        client.write_all(b" SIZE\r\n")?;
+                        client.write_all(b" TVFS\r\n")?;
+                        client.write_all(b" UTF8\r\n")?;
+                        client.write_all(b"211 End\r\n")?;
+                    }
+                    protocol::ControlResponse::Pasv => match server.ip {
+                        net::IpAddr::V4(ip) => {
+                            let ip = ip.to_bits().to_be_bytes();
+                            let port = data_frontend_bind_port.to_be_bytes();
+                            client.write_all(
+                                format!(
+                                    "227 Entering Passive Mode ({},{},{},{},{},{})\r\n",
+                                    ip[0], ip[1], ip[2], ip[3], port[0], port[1]
+                                )
+                                .as_bytes(),
+                            )?;
+                        }
+                        net::IpAddr::V6(_) => {
+                            client.write_all(b"425 Can't open data connection\r\n")?;
+                        }
+                    },
+                    protocol::ControlResponse::Epsv => {
+                        client.write_all(format!("229 Entering Extended Passive Mode (|||{data_frontend_bind_port}|)\r\n").as_bytes())?;
+                    }
+                }
+            }
+        }
+        client.flush()?;
+    }
 }

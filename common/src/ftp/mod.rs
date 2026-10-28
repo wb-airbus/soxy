@@ -1,3 +1,5 @@
+#[cfg(feature = "frontend")]
+use crate::frontend as sfrontend;
 use crate::service;
 
 #[cfg(feature = "backend")]
@@ -6,15 +8,18 @@ mod backend;
 mod frontend;
 mod protocol;
 
-pub(crate) static SERVICE: service::Service = service::Service {
+pub static SERVICE: service::Service = service::Service {
+    internal: false,
     name: "ftp",
     #[cfg(feature = "frontend")]
-    tcp_frontend: Some(service::TcpFrontend {
-        default_port: 2021,
-        handler: frontend::tcp_handler,
+    frontend: Some(sfrontend::Frontend {
+        tcp: Some(sfrontend::FrontendTcp {
+            default_port: 2021,
+            handler: frontend::tcp_handler,
+        }),
     }),
     #[cfg(feature = "backend")]
-    backend: service::Backend {
+    backend: Some(service::Backend {
         handler: backend::handler,
-    },
+    }),
 };

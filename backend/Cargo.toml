@@ -1,7 +1,10 @@
 [package]
 name = "backend"
-version = "2.2.1"
+version = "4.8.4"
 edition = "2024"
+authors = ["Airbus Seclab <seclab+soxy@airbus.com>"]
+repository = "https://github.com/airbus-seclab/soxy"
+license-file = "../LICENSE"
 
 [dependencies]
 common = { path = "../common", features = [ "backend" ] }
@@ -18,6 +21,7 @@ windows-sys = { version = "0", features = [
 "Win32_System_RemoteDesktop",
 "Win32_System_SystemServices",
 "Win32_System_Threading",
+"Win32_System_Power",
 ] }
 
 [build-dependencies]
@@ -26,18 +30,22 @@ bindgen = "0"
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
 must_use_candidate = "allow"
-enum-glob-use = "allow"
-missing-errors-doc = "allow"
+enum_glob_use = "allow"
+missing_errors_doc = "allow"
+nursery = { level = "deny", priority = -1 }
+or_fun_call = "allow"
+significant_drop_tightening = "allow"
+non_send_fields_in_send_ty = "allow"
 
 [[bin]]
 name = "soxy"
 
 [lib]
-crate-type = [ "cdylib", "lib" ]
+crate-type = [ "cdylib", "rlib" ]
 name = "soxy"
 
 [profile.release]
-opt-level = "z"
+opt-level = "s"
 debug = false
 strip = true
 lto = true
@@ -46,3 +54,12 @@ codegen-units = 1
 
 [features]
 log = [ "common/log", "dep:log" ]
+service-clipboard = [ "common/service-clipboard" ]
+service-command = [ "common/service-command" ]
+service-forward = [ "common/service-forward" ]
+service-ftp = [ "common/service-ftp" ]
+service-input = [ "common/service-input" ]
+service-socks5 = [ "common/service-socks5" ]
+service-stage0 = [ "common/service-stage0" ]
+dvc = []
+svc = []

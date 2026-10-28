@@ -1,5 +1,5 @@
 use super::protocol;
-use crate::service;
+use crate::{api, channel, frontend, rdp, service};
 use std::{
     fmt,
     io::{self, Read, Write},
@@ -50,7 +50,7 @@ impl fmt::Display for Error {
 
 fn handshake(stream: &mut net::TcpStream) -> Result<protocol::Command, Error> {
     // client greeting
-    let mut buf = [0; 2];
+    let mut buf = [0u8; 2];
     stream.read_exact(&mut buf)?;
 
     // client version ?
@@ -61,7 +61,7 @@ fn handshake(stream: &mut net::TcpStream) -> Result<protocol::Command, Error> {
     let nb_auth = buf[1];
 
     // client proposed authentication methods
-    let mut buf = vec![0; nb_auth as usize];
+    let mut buf = vec![0u8; nb_auth as usize];
     stream.read_exact(&mut buf)?;
 
     // server supports only 0x0 NO AUTHENTICATION
@@ -81,29 +81,29 @@ fn handshake(stream: &mut net::TcpStream) -> Result<protocol::Command, Error> {
 
 fn command_connect(
     mut stream: net::TcpStream,
-    mut client_rdp: service::RdpStream<'_>,
+    mut client_rdp: rdp::RdpStream<'_>,
 ) -> Result<(), io::Error> {
     let resp = protocol::Response::receive(&mut client_rdp)?;
     resp.answer_to_client(&mut stream)?;
 
     if !resp.is_ok() {
-        let _ = stream.shutdown(net::Shutdown::Both);
         return Ok(());
     }
 
-    service::double_stream_copy(SERVICE_KIND, &super::SERVICE, client_rdp, stream)
+    crate::debug!("starting stream copy");
+
+    service::double_stream_copy(SERVICE_KIND, &super::SERVICE, client_rdp, stream, true)
 }
 
 fn command_bind(
     mut stream: net::TcpStream,
-    mut client_rdp: service::RdpStream<'_>,
+    mut client_rdp: rdp::RdpStream<'_>,
 ) -> Result<(), io::Error> {
     // for the bind operation on the backend
     let resp = protocol::Response::receive(&mut client_rdp)?;
     resp.answer_to_client(&mut stream)?;
 
     if !resp.is_ok() {
-        let _ = stream.shutdown(net::Shutdown::Both);
         return Ok(());
     }
 
@@ -112,29 +112,24 @@ fn command_bind(
     resp.answer_to_client(&mut stream)?;
 
     if !resp.is_ok() {
-        let _ = stream.shutdown(net::Shutdown::Both);
         return Ok(());
     }
 
-    service::double_stream_copy(SERVICE_KIND, &super::SERVICE, client_rdp, stream)
+    crate::debug!("starting stream copy");
+
+    service::double_stream_copy(SERVICE_KIND, &super::SERVICE, client_rdp, stream, true)
 }
 
-pub(crate) fn tcp_handler(
-    _server: &service::TcpFrontendServer,
+pub fn tcp_handler(
+    _server: &frontend::FrontendTcpServer,
     _scope: &thread::Scope,
     mut stream: net::TcpStream,
-    channel: &service::Channel,
-) -> Result<(), io::Error> {
+    channel: &channel::Channel,
+) -> Result<(), api::Error> {
     match handshake(&mut stream) {
         Err(e) => match e {
-            Error::Io(e) => Err(e),
-            Error::UnsupportedVersion(_) => {
-                let buf = [protocol::VERSION, 0xFF];
-                stream.write_all(&buf)?;
-                stream.flush()?;
-                Ok(())
-            }
-            Error::UnsupportedAuthentication(_) => {
+            Error::Io(e) => Err(api::Error::Io(e)),
+            Error::UnsupportedVersion(_) | Error::UnsupportedAuthentication(_) => {
                 let buf = [protocol::VERSION, 0xFF];
                 stream.write_all(&buf)?;
                 stream.flush()?;
@@ -181,8 +176,8 @@ pub(crate) fn tcp_handler(
             command.send(&mut client_rdp)?;
 
             match command {
-                protocol::Command::Connect(_) => command_connect(stream, client_rdp),
-                protocol::Command::Bind => command_bind(stream, client_rdp),
+                protocol::Command::Connect(_) => Ok(command_connect(stream, client_rdp)?),
+                protocol::Command::Bind => Ok(command_bind(stream, client_rdp)?),
             }
         }
     }

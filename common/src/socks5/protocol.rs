@@ -1,3 +1,4 @@
+use crate::util;
 use std::io;
 #[cfg(feature = "frontend")]
 use std::net;
@@ -7,8 +8,8 @@ pub const VERSION: u8 = 0x05;
 #[cfg(feature = "frontend")]
 pub const AUTHENTICATION_NONE: u8 = 0x00;
 
-const ID_CMD_CONNECT: u8 = 0x01;
-const ID_CMD_BIND: u8 = 0x02;
+const ID_CMD_CONNECT: u8 = 0xC1;
+const ID_CMD_BIND: u8 = 0xC2;
 
 #[cfg(feature = "frontend")]
 pub enum Error {
@@ -37,7 +38,7 @@ impl Command {
     where
         R: io::Read,
     {
-        let mut buf = [0; 4];
+        let mut buf = [0u8; 4];
         reader.read_exact(&mut buf)?;
 
         if buf[0] != VERSION {
@@ -58,13 +59,13 @@ impl Command {
         let dest: String = match buf[3] {
             // ipv4
             0x01 => {
-                let mut buf = [0x0; 4];
+                let mut buf = [0u8; 4];
                 reader.read_exact(&mut buf)?;
                 let ip = u32::from_be_bytes(buf);
                 let ip = net::Ipv4Addr::from_bits(ip);
                 let ip = net::IpAddr::V4(ip);
 
-                let mut buf = [0x0; 2];
+                let mut buf = [0u8; 2];
                 reader.read_exact(&mut buf)?;
                 let port = u16::from_be_bytes(buf);
 
@@ -74,13 +75,13 @@ impl Command {
             }
             // domain name
             0x03 => {
-                let mut len = [0x0; 1];
+                let mut len = [0u8; 1];
                 reader.read_exact(&mut len)?;
                 let mut buf = vec![0x0; len[0] as usize];
                 reader.read_exact(&mut buf)?;
                 let name = String::from_utf8_lossy(&buf).to_string();
 
-                let mut buf = [0x0; 2];
+                let mut buf = [0u8; 2];
                 reader.read_exact(&mut buf)?;
                 let port = u16::from_be_bytes(buf);
 
@@ -90,13 +91,13 @@ impl Command {
             }
             // ipv6
             0x04 => {
-                let mut buf = [0x0; 16];
+                let mut buf = [0u8; 16];
                 reader.read_exact(&mut buf)?;
                 let ip = u128::from_be_bytes(buf);
                 let ip = net::Ipv6Addr::from_bits(ip);
                 let ip = net::IpAddr::V6(ip);
 
-                let mut buf = [0x0; 2];
+                let mut buf = [0u8; 2];
                 reader.read_exact(&mut buf)?;
                 let port = u16::from_be_bytes(buf);
 
@@ -130,11 +131,7 @@ impl Command {
                 let buf = [ID_CMD_CONNECT; 1];
                 stream.write_all(&buf)?;
 
-                let len = u32::try_from(to_tcp.len())
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-                stream.write_all(&len.to_le_bytes())?;
-
-                stream.write_all(to_tcp.as_bytes())?;
+                util::serialize_string(stream, to_tcp)?;
             }
             Self::Bind => {
                 let buf = [ID_CMD_BIND; 1];
@@ -154,14 +151,7 @@ impl Command {
 
         match buf[0] {
             ID_CMD_CONNECT => {
-                let mut buf = [0u8; 4];
-                stream.read_exact(&mut buf)?;
-                let len = u32::from_le_bytes(buf);
-
-                let mut buf = vec![0u8; len as usize];
-                stream.read_exact(&mut buf)?;
-                let to_tcp = String::from_utf8_lossy(&buf).to_string();
-
+                let to_tcp = util::deserialize_string(stream)?;
                 Ok(Self::Connect(to_tcp))
             }
             ID_CMD_BIND => Ok(Self::Bind),
@@ -170,11 +160,11 @@ impl Command {
     }
 }
 
-const ID_RESP_OK: u8 = 0x00;
-const ID_RESP_NETWORK_UNREACHABLE: u8 = 0x01;
-const ID_RESP_HOST_UNREACHABLE: u8 = 0x02;
-const ID_RESP_CONNECTION_REFUSED: u8 = 0x03;
-const ID_RESP_BIND_FAILED: u8 = 0x04;
+const ID_RESP_OK: u8 = 0xD0;
+const ID_RESP_NETWORK_UNREACHABLE: u8 = 0xD1;
+const ID_RESP_HOST_UNREACHABLE: u8 = 0xD2;
+const ID_RESP_CONNECTION_REFUSED: u8 = 0xD3;
+const ID_RESP_BIND_FAILED: u8 = 0xD4;
 
 #[derive(Debug)]
 pub enum Response {

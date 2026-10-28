@@ -15,7 +15,7 @@ $SOXY_SVC_NAME = "stage0"
 [UInt32] $VC_TIMEOUT_MILLISECONDS = 30000
 
 # Maximum number of bytes which can be read at at time from the virtual channel
-[UInt32] $SOXY_CHUNK_MAX_LEN = 1600
+[UInt32] $SOXY_CHUNK_MAX_LEN = 1590
 
 # Path to the supported backend DLLs:
 # - Citrix (C:\Program Files\Citrix\ICAService\wfapi64.dll)
@@ -499,14 +499,14 @@ using System;
 using System.Runtime.InteropServices;
 
 public enum SOXY_CHUNK_TYPE: byte {
-    ID_START = 0,
-    ID_DATA = 1,
-    ID_END = 2,
+    ID_START = 0xF0,
+    ID_DATA = 0xF1,
+    ID_END = 0xF2,
 };
 
 [StructLayout(LayoutKind.Sequential, Pack=1)]
 public struct SOXY_CHUNK_HEADER {
-    public UInt32 ClientId;
+    public UInt16 ClientId;
     public SOXY_CHUNK_TYPE ChunkType;
     public UInt16 PayloadLen;
 };

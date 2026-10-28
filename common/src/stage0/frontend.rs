@@ -1,24 +1,47 @@
-use crate::{api, service};
+use crate::{api, channel, frontend, service};
 use std::{
     fs,
     io::{self, BufRead, Read, Write},
     net, thread,
 };
 
-pub(crate) fn tcp_handler(
-    _server: &service::TcpFrontendServer,
+// https://patorjk.com/software/taag/#p=display&h=0&v=0&f=Ogre&t=stage0%0A
+const LOGO: &str = r"
+      _                         ___
+ ___ | |_   __ _   __ _   ___  / _ \
+/ __|| __| / _` | / _` | / _ \| | | |
+\__ \| |_ | (_| || (_| ||  __/| |_| |
+|___/ \__| \__,_| \__, | \___| \___/
+                  |___/";
+
+const HELP: &str = r#"
+Available commands:
+- "cat FILE" or "push FILE" or "put FILE" or "send FILE" or "upload FILE" to uplaod the content of FILE;
+- "exit" or "quit" to exit this intrerface.
+"#;
+
+const PROMPT: &str = "stage0> ";
+
+pub fn tcp_handler(
+    _server: &frontend::FrontendTcpServer,
     _scope: &thread::Scope,
     stream: net::TcpStream,
-    channel: &service::Channel,
-) -> Result<(), io::Error> {
+    channel: &channel::Channel,
+) -> Result<(), api::Error> {
     let lstream = stream.try_clone()?;
     let mut client_read = io::BufReader::new(lstream);
 
     let mut client_write = io::BufWriter::new(stream);
 
+    client_write.write_fmt(format_args!("{}\n{}\n{}\n", service::LOGO, LOGO, HELP))?;
+    client_write.flush()?;
+
     let mut rdp = channel.connect(&super::SERVICE)?;
 
     let mut line = String::new();
+
+    client_write.write_all(PROMPT.as_bytes())?;
+    client_write.flush()?;
 
     let _ = client_read.read_line(&mut line)?;
 
@@ -43,13 +66,14 @@ pub(crate) fn tcp_handler(
     crate::trace!("ARGS = {args:?}");
 
     match command.as_str() {
+        "EXIT" | "QUIT" => (),
         "CAT" | "PUSH" | "PUT" | "SEND" | "UPLOAD" => {
             match fs::File::options().read(true).open(args) {
                 Err(e) => {
                     writeln!(client_write, "failed to open file for reading: {e}")?;
                 }
                 Ok(mut file) => {
-                    let mut buf = [0; api::CHUNK_LENGTH];
+                    let mut buf = [0; api::PDU_DATA_MAX_SIZE];
 
                     let mut total = 0;
 
@@ -62,7 +86,7 @@ pub(crate) fn tcp_handler(
 
                         crate::trace!("{read} bytes read");
 
-                        rdp.write_all(&buf[0..read])?;
+                        rdp.write_all(&buf[..read])?;
 
                         total += read;
                     }
@@ -76,7 +100,6 @@ pub(crate) fn tcp_handler(
 
     client_write.flush()?;
 
-    let _ = rdp.disconnect();
     let lstream = client_read.into_inner();
     let _ = lstream.shutdown(net::Shutdown::Both);
 

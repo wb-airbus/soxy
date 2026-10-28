@@ -1,6 +1,7 @@
-use common::service;
+use common::{channel, service};
+use soxy as frontend;
 
-const CHANNEL_SIZE: usize = 256;
+const CHANNEL_SIZE: usize = 1;
 
 #[allow(clippy::too_many_lines)]
 fn main() {
@@ -9,17 +10,19 @@ fn main() {
     let (backend_to_frontend_send, backend_to_frontend_receive) =
         crossbeam_channel::bounded(CHANNEL_SIZE);
 
-    let backend_channel = service::Channel::new(backend_to_frontend_send);
-    let frontend_channel = service::Channel::new(frontend_to_backend_send);
+    let backend_channel = channel::Channel::new(backend_to_frontend_send);
+    let frontend_channel = channel::Channel::new(frontend_to_backend_send);
 
-    if let Err(e) = soxy::init(frontend_channel, backend_to_frontend_receive) {
-        common::error!("error: {e}");
+    if let Err(e) = frontend::start(frontend_channel, backend_to_frontend_receive) {
+        common::error!("{e}");
         return;
     }
 
-    if let Err(e) = backend_channel.start(service::Kind::Backend, &frontend_to_backend_receive) {
-        common::error!("error: {e}");
+    common::log_package_infos!();
+
+    if let Err(e) = backend_channel.run(service::Kind::Backend, &frontend_to_backend_receive) {
+        common::error!("backend channel stopped: {e}");
     } else {
-        common::debug!("terminated");
+        common::debug!("backend channel stopped");
     }
 }

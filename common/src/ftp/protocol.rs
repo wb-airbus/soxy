@@ -1,191 +1,344 @@
-use std::{fmt, io};
+use crate::{api, util};
+use std::io;
 
-const ID_CWD: u8 = 0x0;
-const ID_DELE: u8 = 0x1;
-const ID_LIST: u8 = 0x2;
-const ID_NLST: u8 = 0x3;
-const ID_RETR: u8 = 0x4;
-const ID_SIZE: u8 = 0x5;
-const ID_STOR: u8 = 0x6;
+const ID_MODE_CONTROL: u8 = 0x00;
+const ID_MODE_DATA: u8 = 0x01;
 
-#[derive(Debug)]
-pub enum DataCommand {
-    Cwd(String),
-    Dele(String),
-    List(String),
-    NLst(String),
-    Retr(String),
-    Size(String),
-    Stor(String),
+pub enum BackendMode {
+    Control,
+    Data,
 }
 
-impl DataCommand {
+impl BackendMode {
     #[cfg(feature = "frontend")]
-    pub(crate) const fn is_ftp_control(&self) -> bool {
-        match self {
-            Self::Dele(_) | Self::Cwd(_) | Self::Size(_) => true,
-            Self::List(_) | Self::NLst(_) | Self::Retr(_) | Self::Stor(_) => false,
-        }
-    }
-
-    #[cfg(feature = "frontend")]
-    pub(crate) const fn is_upload(&self) -> bool {
-        matches!(self, Self::Stor(_))
-    }
-
-    #[cfg(feature = "frontend")]
-    pub(crate) fn send<W>(&self, stream: &mut W) -> Result<(), io::Error>
+    pub fn send<W>(&self, stream: &mut W) -> Result<(), api::Error>
     where
         W: io::Write,
     {
-        let (code, value) = match self {
-            Self::Cwd(s) => (ID_CWD, s),
-            Self::Dele(s) => (ID_DELE, s),
-            Self::List(s) => (ID_LIST, s),
-            Self::NLst(s) => (ID_NLST, s),
-            Self::Retr(s) => (ID_RETR, s),
-            Self::Size(s) => (ID_SIZE, s),
-            Self::Stor(s) => (ID_STOR, s),
+        let code = match self {
+            Self::Control => ID_MODE_CONTROL,
+            Self::Data => ID_MODE_DATA,
         };
 
         let buf = [code; 1];
         stream.write_all(&buf)?;
-        let len = value.len() as u64;
-        stream.write_all(&len.to_le_bytes())?;
-        stream.write_all(value.as_bytes())?;
-        stream.flush()
+        stream.flush()?;
+
+        Ok(())
     }
 
     #[cfg(feature = "backend")]
-    pub(crate) fn receive<R>(stream: &mut R) -> Result<Self, io::Error>
+    pub fn receive<R>(stream: &mut R) -> Result<Self, api::Error>
     where
         R: io::Read,
     {
         let mut buf = [0u8; 1];
         stream.read_exact(&mut buf)?;
-        let code = buf[0];
 
-        let mut buf = [0u8; 8];
-        stream.read_exact(&mut buf)?;
-        let len = u64::from_le_bytes(buf);
+        match buf[0] {
+            ID_MODE_CONTROL => Ok(Self::Control),
+            ID_MODE_DATA => Ok(Self::Data),
+            _ => {
+                #[cfg(not(feature = "log"))]
+                {
+                    Err(api::Error::Io(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "",
+                    )))
+                }
 
-        let len = usize::try_from(len)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        let mut buf = vec![0u8; len];
-        stream.read_exact(&mut buf)?;
-        let value = String::from_utf8_lossy(&buf).to_string();
-
-        match code {
-            ID_CWD => Ok(Self::Cwd(value)),
-            ID_DELE => Ok(Self::Dele(value)),
-            ID_LIST => Ok(Self::List(value)),
-            ID_NLST => Ok(Self::NLst(value)),
-            ID_RETR => Ok(Self::Retr(value)),
-            ID_SIZE => Ok(Self::Size(value)),
-            ID_STOR => Ok(Self::Stor(value)),
-            v => unimplemented!("unsupported ftp data command {v}"),
+                #[cfg(feature = "log")]
+                {
+                    Err(api::Error::Io(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "invalid command",
+                    )))
+                }
+            }
         }
     }
 }
 
-impl fmt::Display for DataCommand {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Cwd(path) => write!(f, "change directory {path:?}"),
-            Self::Dele(path) => write!(f, "delete {path:?}"),
-            Self::List(path) => write!(f, "list {path:?}"),
-            Self::NLst(path) => write!(f, "nlst {path:?}"),
-            Self::Retr(path) => write!(f, "download {path:?}"),
-            Self::Size(path) => write!(f, "size {path:?}"),
-            Self::Stor(path) => write!(f, "upload {path:?}"),
-        }
-    }
-}
-
-#[cfg(feature = "frontend")]
-const ID_DATA_TRANSFER_OK: u8 = 0x0;
-const ID_CWD_OK: u8 = 0x1;
-const ID_SIZE_OK: u8 = 0x2;
-const ID_DELETE_OK: u8 = 0x3;
-const ID_KO: u8 = 0x4;
+const ID_CTRL_CMD_CDUP: u8 = 0x00;
+const ID_CTRL_CMD_CWD: u8 = 0x01;
+const ID_CTRL_CMD_DELE: u8 = 0x02;
+const ID_CTRL_CMD_EPSV: u8 = 0x03;
+const ID_CTRL_CMD_FEAT: u8 = 0x04;
+const ID_CTRL_CMD_LIST: u8 = 0x05;
+const ID_CTRL_CMD_NLST: u8 = 0x06;
+const ID_CTRL_CMD_OPTS: u8 = 0x07;
+const ID_CTRL_CMD_PASS: u8 = 0x08;
+const ID_CTRL_CMD_PASV: u8 = 0x09;
+const ID_CTRL_CMD_PWD: u8 = 0x0a;
+const ID_CTRL_CMD_QUIT: u8 = 0x0b;
+const ID_CTRL_CMD_RETR: u8 = 0x0c;
+const ID_CTRL_CMD_STOR: u8 = 0x0d;
+const ID_CTRL_CMD_SIZE: u8 = 0x0e;
+const ID_CTRL_CMD_TYPE: u8 = 0x0f;
+const ID_CTRL_CMD_USER: u8 = 0x10;
 
 #[derive(Debug)]
-pub enum DataReply {
-    #[cfg(feature = "frontend")]
-    DataTransferOk,
-    CwdOk,
-    SizeOk(u64),
-    DeleteOk,
-    Ko,
+pub enum ControlCommand {
+    Cdup,
+    Cwd(String),
+    Dele(String),
+    Epsv,
+    Feat,
+    List,
+    Nlst,
+    Opts,
+    Pass,
+    Pasv,
+    Pwd,
+    Quit,
+    Retr(String),
+    Stor(String),
+    Size(String),
+    Type,
+    User,
 }
 
-impl DataReply {
+impl ControlCommand {
     #[cfg(feature = "frontend")]
-    pub(crate) const fn is_ok(&self) -> bool {
-        match self {
-            Self::DataTransferOk | Self::CwdOk | Self::SizeOk(_) | Self::DeleteOk => true,
-            Self::Ko => false,
-        }
-    }
-
-    #[cfg(feature = "backend")]
-    pub(crate) fn send<W>(&self, stream: &mut W) -> Result<(), io::Error>
+    pub fn send<W>(&self, stream: &mut W) -> Result<(), api::Error>
     where
         W: io::Write,
     {
-        let (code, value) = match self {
-            #[cfg(feature = "frontend")]
-            Self::DataTransferOk => (ID_DATA_TRANSFER_OK, None),
-            Self::CwdOk => (ID_CWD_OK, None),
-            Self::SizeOk(size) => (ID_SIZE_OK, Some(size)),
-            Self::DeleteOk => (ID_DELETE_OK, None),
-            Self::Ko => (ID_KO, None),
+        let code = match self {
+            Self::Cdup => ID_CTRL_CMD_CDUP,
+            Self::Cwd(_) => ID_CTRL_CMD_CWD,
+            Self::Dele(_) => ID_CTRL_CMD_DELE,
+            Self::Epsv => ID_CTRL_CMD_EPSV,
+            Self::Feat => ID_CTRL_CMD_FEAT,
+            Self::List => ID_CTRL_CMD_LIST,
+            Self::Nlst => ID_CTRL_CMD_NLST,
+            Self::Opts => ID_CTRL_CMD_OPTS,
+            Self::Pass => ID_CTRL_CMD_PASS,
+            Self::Pasv => ID_CTRL_CMD_PASV,
+            Self::Pwd => ID_CTRL_CMD_PWD,
+            Self::Quit => ID_CTRL_CMD_QUIT,
+            Self::Retr(_) => ID_CTRL_CMD_RETR,
+            Self::Stor(_) => ID_CTRL_CMD_STOR,
+            Self::Size(_) => ID_CTRL_CMD_SIZE,
+            Self::Type => ID_CTRL_CMD_TYPE,
+            Self::User => ID_CTRL_CMD_USER,
         };
 
-        let mut buf = [0u8; 1];
-        buf[0] = code;
+        let buf = [code; 1];
         stream.write_all(&buf)?;
-        if let Some(value) = value {
-            stream.write_all(&value.to_le_bytes())?;
+
+        match self {
+            Self::Dele(s) | Self::Cwd(s) | Self::Retr(s) | Self::Stor(s) | Self::Size(s) => {
+                util::serialize_string(stream, s)?;
+            }
+            Self::Cdup
+            | Self::Epsv
+            | Self::Feat
+            | Self::List
+            | Self::Nlst
+            | Self::Opts
+            | Self::Pass
+            | Self::Pasv
+            | Self::Pwd
+            | Self::Quit
+            | Self::Type
+            | Self::User => (),
         }
-        stream.flush()
+
+        stream.flush()?;
+
+        Ok(())
     }
 
-    #[cfg(feature = "frontend")]
-    pub(crate) fn receive<R>(stream: &mut R) -> Result<Self, io::Error>
+    #[cfg(feature = "backend")]
+    pub fn receive<R>(stream: &mut R) -> Result<Self, api::Error>
     where
         R: io::Read,
     {
         let mut buf = [0u8; 1];
         stream.read_exact(&mut buf)?;
-        let code = buf[0];
 
-        match code {
-            #[cfg(feature = "frontend")]
-            ID_DATA_TRANSFER_OK => Ok(Self::DataTransferOk),
-            ID_CWD_OK => Ok(Self::CwdOk),
-            ID_SIZE_OK => {
-                let mut buf = [0u8; 8];
-                stream.read_exact(&mut buf)?;
-                let size = u64::from_le_bytes(buf);
-                Ok(Self::SizeOk(size))
-            }
-            ID_DELETE_OK => Ok(Self::DeleteOk),
-            ID_KO => Ok(Self::Ko),
-            v => unimplemented!("unsupported ftp data reply {v}"),
-        }
+        let res = match buf[0] {
+            ID_CTRL_CMD_CDUP => Self::Cdup,
+            ID_CTRL_CMD_CWD => Self::Cwd(util::deserialize_string(stream)?),
+            ID_CTRL_CMD_DELE => Self::Dele(util::deserialize_string(stream)?),
+            ID_CTRL_CMD_EPSV => Self::Epsv,
+            ID_CTRL_CMD_FEAT => Self::Feat,
+            ID_CTRL_CMD_LIST => Self::List,
+            ID_CTRL_CMD_NLST => Self::Nlst,
+            ID_CTRL_CMD_OPTS => Self::Opts,
+            ID_CTRL_CMD_PASS => Self::Pass,
+            ID_CTRL_CMD_PASV => Self::Pasv,
+            ID_CTRL_CMD_PWD => Self::Pwd,
+            ID_CTRL_CMD_QUIT => Self::Quit,
+            ID_CTRL_CMD_RETR => Self::Retr(util::deserialize_string(stream)?),
+            ID_CTRL_CMD_STOR => Self::Stor(util::deserialize_string(stream)?),
+            ID_CTRL_CMD_SIZE => Self::Size(util::deserialize_string(stream)?),
+            ID_CTRL_CMD_TYPE => Self::Type,
+            ID_CTRL_CMD_USER => Self::User,
+            v => unimplemented!("unsupported ftp data command {v}"),
+        };
+
+        Ok(res)
     }
 }
 
-impl fmt::Display for DataReply {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+const ID_CTRL_RESP_OK: u8 = 0x00;
+const ID_CTRL_RESP_ERROR: u8 = 0x01;
+const ID_CTRL_RESP_DATA: u8 = 0x02;
+const ID_CTRL_RESP_QUIT: u8 = 0x03;
+const ID_CTRL_RESP_FEAT: u8 = 0x04;
+const ID_CTRL_RESP_PASV: u8 = 0x05;
+const ID_CTRL_RESP_EPSV: u8 = 0x06;
+
+#[derive(Debug)]
+pub enum ControlResponse {
+    Ok(u16, Option<String>),
+    Error(u16),
+    Data(DataCommand),
+    Quit,
+    Feat,
+    Pasv,
+    Epsv,
+}
+
+impl ControlResponse {
+    #[cfg(feature = "backend")]
+    pub fn send<W>(&self, stream: &mut W) -> Result<(), api::Error>
+    where
+        W: io::Write,
+    {
+        let code = match self {
+            Self::Ok(_, _) => ID_CTRL_RESP_OK,
+            Self::Error(_) => ID_CTRL_RESP_ERROR,
+            Self::Data(_) => ID_CTRL_RESP_DATA,
+            Self::Quit => ID_CTRL_RESP_QUIT,
+            Self::Feat => ID_CTRL_RESP_FEAT,
+            Self::Pasv => ID_CTRL_RESP_PASV,
+            Self::Epsv => ID_CTRL_RESP_EPSV,
+        };
+
+        let buf = [code; 1];
+        stream.write_all(&buf)?;
+
         match self {
-            #[cfg(feature = "frontend")]
-            Self::DataTransferOk => write!(f, "data transfer ok"),
-            Self::CwdOk => write!(f, "change directory ok"),
-            Self::SizeOk(size) => write!(f, "size ok ({size})"),
-            Self::DeleteOk => write!(f, "delete ok"),
-            Self::Ko => write!(f, "KO"),
+            Self::Ok(c, msg) => {
+                stream.write_all(&c.to_le_bytes())?;
+                match msg {
+                    None => util::serialize_string(stream, "")?,
+                    Some(msg) => util::serialize_string(stream, msg)?,
+                }
+            }
+            Self::Error(c) => {
+                stream.write_all(&c.to_le_bytes())?;
+            }
+            Self::Data(cmd) => {
+                cmd.send(stream)?;
+            }
+            Self::Quit | Self::Feat | Self::Pasv | Self::Epsv => (),
         }
+
+        stream.flush()?;
+
+        Ok(())
+    }
+
+    #[cfg(feature = "frontend")]
+    pub fn receive<R>(stream: &mut R) -> Result<Self, api::Error>
+    where
+        R: io::Read,
+    {
+        let mut buf = [0u8; 1];
+        stream.read_exact(&mut buf)?;
+
+        let res = match buf[0] {
+            ID_CTRL_RESP_OK => {
+                let mut c = [0u8; 2];
+                stream.read_exact(&mut c)?;
+                let c = u16::from_le_bytes(c);
+                let msg = util::deserialize_string(stream)?;
+                if msg.is_empty() {
+                    Self::Ok(c, None)
+                } else {
+                    Self::Ok(c, Some(msg))
+                }
+            }
+            ID_CTRL_RESP_ERROR => {
+                let mut c = [0u8; 2];
+                stream.read_exact(&mut c)?;
+                Self::Error(u16::from_le_bytes(c))
+            }
+            ID_CTRL_RESP_DATA => {
+                let cmd = DataCommand::receive(stream)?;
+                Self::Data(cmd)
+            }
+            ID_CTRL_RESP_QUIT => Self::Quit,
+            ID_CTRL_RESP_FEAT => Self::Feat,
+            ID_CTRL_RESP_PASV => Self::Pasv,
+            ID_CTRL_RESP_EPSV => Self::Epsv,
+            v => unimplemented!("unsupported ftp data response {v}"),
+        };
+
+        Ok(res)
+    }
+}
+
+const ID_DATA_CMD_LIST: u8 = 0x00;
+const ID_DATA_CMD_NLST: u8 = 0x01;
+const ID_DATA_CMD_RETR: u8 = 0x02;
+const ID_DATA_CMD_STOR: u8 = 0x03;
+
+#[derive(Debug)]
+pub enum DataCommand {
+    List(String),
+    Nlst(String),
+    Retr(String),
+    Stor(String),
+}
+
+impl DataCommand {
+    pub fn send<W>(&self, stream: &mut W) -> Result<(), api::Error>
+    where
+        W: io::Write,
+    {
+        let code = match self {
+            Self::List(_) => ID_DATA_CMD_LIST,
+            Self::Nlst(_) => ID_DATA_CMD_NLST,
+            Self::Retr(_) => ID_DATA_CMD_RETR,
+            Self::Stor(_) => ID_DATA_CMD_STOR,
+        };
+
+        let buf = [code; 1];
+        stream.write_all(&buf)?;
+
+        match self {
+            Self::List(p) | Self::Nlst(p) | Self::Retr(p) | Self::Stor(p) => {
+                util::serialize_string(stream, p)?;
+            }
+        }
+
+        stream.flush()?;
+
+        Ok(())
+    }
+
+    pub fn receive<R>(stream: &mut R) -> Result<Self, api::Error>
+    where
+        R: io::Read,
+    {
+        let mut buf = [0u8; 1];
+        stream.read_exact(&mut buf)?;
+
+        let path = util::deserialize_string(stream)?;
+
+        let res = match buf[0] {
+            ID_DATA_CMD_LIST => Self::List(path),
+            ID_DATA_CMD_NLST => Self::Nlst(path),
+            ID_DATA_CMD_RETR => Self::Retr(path),
+            ID_DATA_CMD_STOR => Self::Stor(path),
+            v => unimplemented!("unsupported backend mode {v}"),
+        };
+
+        Ok(res)
     }
 }

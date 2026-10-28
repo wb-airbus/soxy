@@ -1,0 +1,1 @@
+pub const PLUGIN_GUID: u128 = 0x5d0d11cd_840c_4444_a7db_60713d58c505;

@@ -1,3 +1,4 @@
+use crate::util;
 use std::io;
 
 const ID_READ: u8 = 0x0;
@@ -5,7 +6,7 @@ const ID_WRITE_TEXT: u8 = 0x1;
 
 pub enum Command {
     Read,
-    WriteText(Vec<u8>),
+    WriteText(String),
 }
 
 impl Command {
@@ -16,18 +17,14 @@ impl Command {
     {
         match self {
             Self::Read => {
-                let mut buf = [0u8; 1];
-                buf[0] = ID_READ;
+                let buf = [ID_READ; 1];
                 stream.write_all(&buf)?;
             }
-            Self::WriteText(d) => {
-                let mut buf = [0u8; 1];
-                buf[0] = ID_WRITE_TEXT;
+            Self::WriteText(t) => {
+                let buf = [ID_WRITE_TEXT; 1];
                 stream.write_all(&buf)?;
 
-                let len = d.len();
-                stream.write_all(&len.to_le_bytes())?;
-                stream.write_all(d)?;
+                util::serialize_string(stream, t)?;
             }
         }
         stream.flush()
@@ -44,21 +41,23 @@ impl Command {
         match buf[0] {
             ID_READ => Ok(Self::Read),
             ID_WRITE_TEXT => {
-                let mut buf = [0u8; 8];
-                stream.read_exact(&mut buf)?;
-                let len = u64::from_le_bytes(buf);
-                let len = usize::try_from(len)
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-
-                let mut buf = vec![0u8; len];
-                stream.read_exact(&mut buf)?;
-
-                Ok(Self::WriteText(Vec::from(buf)))
+                let text = util::deserialize_string(stream)?;
+                Ok(Self::WriteText(text))
             }
-            _ => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "invalid command",
-            )),
+            _ => {
+                #[cfg(not(feature = "log"))]
+                {
+                    Err(io::Error::new(io::ErrorKind::InvalidData, ""))
+                }
+
+                #[cfg(feature = "log")]
+                {
+                    Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "invalid command",
+                    ))
+                }
+            }
         }
     }
 }
@@ -68,7 +67,7 @@ const ID_FAILED: u8 = 0x1;
 const ID_WRITE_DONE: u8 = 0x2;
 
 pub enum Response {
-    Text(Vec<u8>),
+    Text(String),
     Failed,
     WriteDone,
 }
@@ -80,23 +79,18 @@ impl Response {
         W: io::Write,
     {
         match self {
-            Self::Text(s) => {
-                let mut buf = [0u8; 1];
-                buf[0] = ID_TEXT;
+            Self::Text(t) => {
+                let buf = [ID_TEXT; 1];
                 stream.write_all(&buf)?;
 
-                let len = s.len();
-                stream.write_all(&len.to_le_bytes())?;
-                stream.write_all(s)?;
+                util::serialize_string(stream, t)?;
             }
             Self::Failed => {
-                let mut buf = [0u8; 1];
-                buf[0] = ID_FAILED;
+                let buf = [ID_FAILED; 1];
                 stream.write_all(&buf)?;
             }
             Self::WriteDone => {
-                let mut buf = [0u8; 1];
-                buf[0] = ID_WRITE_DONE;
+                let buf = [ID_WRITE_DONE; 1];
                 stream.write_all(&buf)?;
             }
         }
@@ -113,16 +107,8 @@ impl Response {
 
         match buf[0] {
             ID_TEXT => {
-                let mut buf = [0u8; 8];
-                stream.read_exact(&mut buf)?;
-                let len = u64::from_le_bytes(buf);
-                let len = usize::try_from(len)
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-
-                let mut buf = vec![0u8; len];
-                stream.read_exact(&mut buf)?;
-
-                Ok(Self::Text(Vec::from(buf)))
+                let t = util::deserialize_string(stream)?;
+                Ok(Self::Text(t))
             }
             ID_FAILED => Ok(Self::Failed),
             ID_WRITE_DONE => Ok(Self::WriteDone),

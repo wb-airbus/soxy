@@ -14,14 +14,17 @@ Windows instance managed by one of the supported VDIs, while the frontend
 bridges access to backend functions by exposing VDI-side resources locally using
 a common protocol. At the time of writing, soxy provides:
 
+- a telnet interface to inject keystrokes ("input");
 - a bootstrap module using a PowerShell backend script ("stage0");
 - a (basic) FTP server to access the remote machine's filesystem;
-- a telnet-like interface to spawn and interact with a console/shell executed on
+- a telnet interface to spawn and interact with a console/shell executed on
   the remote machine;
-- a telnet-like interface to read/write the clipboard of the remote
+- a telnet interface to read/write the clipboard of the remote
   machine;
 - a SOCKS5 proxy which permits to open connections on client's side as if it was
-  opened in the remote machine.
+  opened in the remote machine;
+- a port forwarding to bind TCP ports on client's side which will
+  connect to configuration defined hosts and ports from the remote machine.
 
 soxy is a more stable, complete and modular alternative to existing tools such
 as [SocksOverRDP](https://github.com/nccgroup/SocksOverRDP),
@@ -69,6 +72,9 @@ The soxy source code is split into four parts:
   local network, depending on the configuration) for each service;
 - **backend**: contains the code of the Windows executable
   (or DLL) to be launched (or loaded) on the remote Windows machine;
+- **soxyreg**: contains the code to produce an executable that
+  simplifies the (un)installation of the `frontend` on Windows by
+  inserting/deleting the appropriate registry keys;
 - **standalone**: contains the code to produce an executable including both the
   `frontend` and the `backend` parts (with an emulated RDP channel) for testing
   implementations of services;
@@ -76,6 +82,7 @@ The soxy source code is split into four parts:
 
 All communications between the `frontend` and the `backend` go through
 a single [Static Virtual Channel](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-rdpbcgr/343e4888-4c48-4054-b0e3-4e0762d1993c)
+or a single [Dynamic Virtual Channel](https://learn.microsoft.com/en-us/windows/win32/termserv/dynamic-virtual-channels)
 of the RDP protocol. A single FIFO is used to transmit from/to the `frontend`
 to/from `backend`, which means that there is no priority levels between services
 within soxy.
@@ -113,6 +120,24 @@ The following elements are required to build them:
 - `gcc-multilib` on Debian and Ubuntu to but i686 Linux binaries;
 - [rustup](https://rustup.rs/) installed (see next section).
 
+##### Included services
+
+By default both Static and Dynamic Virtual Channels are supported and
+enabled in the ̀`Makefile`. It is possible to build `soxy` with the
+support of a Static/Dynamic Virtual Channel only by editing
+the `VC` variable at the beginning of the `Makefile`.
+
+```Makefile
+VC ?= dvc svc
+```
+
+By default all services are enabled in the `Makefile`. It is possible
+to include services needed only by editing the `SERVICES`
+variable at the beginning of the `Makefile`.
+
+```Makefile
+SERVICES ?= clipboard command forward ftp input socks5 stage0
+```
 
 ##### Make Targets
 
@@ -124,12 +149,13 @@ by editing the three following variables at the beginning of the `Makefile`.
 TARGETS_FRONTEND ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
 TARGETS_BACKEND ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
 TARGETS_STANDALONE ?= i686-pc-windows-gnu x86_64-pc-windows-gnu i686-unknown-linux-gnu x86_64-unknown-linux-gnu
+TARGETS_SOXYREG ?= i686-pc-windows-gnu x86_64-pc-windows-gnu
 ```
 
-It is also possible to override the default enabled platforms from the command line, e.g.:
+It is also possible to override all default enabled parameters from the command line, e.g.:
 
 ```bash
-TARGETS_FRONTEND=x86_64-unknown-linux-gnu TARGETS_BACKEND=x86_64-pc-windows-gnu TARGETS_STANDALONE= make debug
+VC=dvc SERVICES=socks5 TARGETS_FRONTEND=x86_64-unknown-linux-gnu TARGETS_BACKEND=x86_64-pc-windows-gnu TARGETS_STANDALONE= TARGETS_SOXYREG=x86_64-pc-windows-gnu make debug
 ```
 
 The `Makefile` contains three main targets:
@@ -168,6 +194,11 @@ The output hierarchy of the created repositories is the following:
 │   │   └── soxy.dll
 │   └── x86_64-unknown-linux-gnu
 │       └── libsoxy.so
+└── soxyreg
+│   ├── i686-pc-windows-gnu
+│   │   └── soxyreg.exe
+│   ├── x86_64-pc-windows-gnu
+│       └── soxyreg.exe
 └── standalone
     ├── i686-pc-windows-gnu
     │   └── soxy_standalone.exe
@@ -202,7 +233,7 @@ installable as described in the next section.
 
 ### 🔌 Frontend Installation
 
-#### For VMware Horizon Client
+#### For VMware Horizon Client and Windows native RDP client
 
 ##### On macOS
 
@@ -221,17 +252,36 @@ to `/usr/lib/omnissa/rdpvcbridge/`.
 
 ##### On Windows
 
-Register the `frontend` library for automatic loading by VMware Horizon client:
+Register the `frontend` library for automatic loading by VMware
+Horizon client. It is mandatory to use the same architecture version
+(*i.e.* 32/64 bit version from
+`i686-pc-windows-gnu`/x86_64-pc-windows-gnu) of `soxyreg.exe` than for
+`soxy.dll`?
+
+To use a Static Virtual Channel:
 
 ```bash
-regsvr32.exe soxy.dll
+soxyreg.exe svc register soxy.dll
 ```
 
-To uninstall:
+(x)or to use a Dynamic Virtual Channel:
 
 ```bash
-regsvr32.exe /u soxy.dll
+soxyreg.exe dvc register soxy.dll
 ```
+
+To uninstall the Static Virtual Channel:
+
+```bash
+soxyreg.exe svc unregister
+```
+
+(x)or to uninstall the Dynamic Virtual Channel:
+
+```bash
+soxyreg.exe dvc unregister
+```
+
 
 #### For FreeRDP and Remmina (Linux)
 
@@ -239,35 +289,64 @@ Create the FreeRDP plugin directory and copy the library to it. Be careful, the
 name of the library **must** be `libsoxy-client.so` (not `libsoxy.so`) otherwise
 the library will not be found by FreeRDP/Remmina:
 
-* for FreeRDP 2:
+* for FreeRDP 2 on Arch:
+
+  ```bash
+  sudo mkdir -p /usr/lib/freerdp2
+  sudo cp release/frontend/x86_64-unknown-linux-gnu/libsoxy.so /usr/lib/freerdp2/libsoxy-client.so
+  ```
+
+* for FreeRDP 2 on Debian/Ubuntu:
 
   ```bash
   sudo mkdir -p /usr/lib/x86_64-linux-gnu/freerdp2
   sudo cp release/frontend/x86_64-unknown-linux-gnu/libsoxy.so /usr/lib/x86_64-linux-gnu/freerdp2/libsoxy-client.so
   ```
-* for FreeRDP 3:
+
+* for FreeRDP 3 on Arch:
 
   ```bash
   sudo mkdir -p /usr/lib/freerdp3
   sudo cp release/frontend/x86_64-unknown-linux-gnu/libsoxy.so /usr/lib/freerdp3/libsoxy-client.so
   ```
 
-When you launch FreeRDP from the command line, you have to add the argument
-`/vc:soxy` to tell FreeRDP to load the library, for example:
-
-* for FreeRDP 2:
+* for FreeRDP 3 on Debian/Ubuntu:
 
   ```bash
-  xfreerdp /dynamic-resolution /log-level:INFO /u:User /v:192.168.42.42 /vc:soxy
+  sudo mkdir -p /usr/lib/x86_64-linux-gnu/freerdp3
+  sudo cp release/frontend/x86_64-unknown-linux-gnu/libsoxy.so /usr/lib/x86_64-linux-gnu/freerdp3/libsoxy-client.so
   ```
-* for FreeRDP 3:
+
+When you launch FreeRDP from the command line, you have to add the argument
+`/vc:soxy` to tell FreeRDP to load the library and to use a Static Virtual Channel,
+(x)or `/dvc:soxy` to use a Dynamic Virtual Channel, for example:
+
+* for FreeRDP 2 with a Static Virtual Channel:
 
   ```bash
-  sdl-freerdp3 /dynamic-resolution /log-level:INFO /u:User /v:192.168.42.42 /vc:soxy
+  xfreerdp /dynamic-resolution /log-level:INFO /v:192.168.42.42 /vc:soxy
+  ```
+
+or with Dynamic Virtual Channel:
+
+  ```bash
+  xfreerdp /dynamic-resolution /log-level:INFO /v:192.168.42.42 /dvc:soxy
+  ```
+
+* for FreeRDP 3 with a Static Virtual Channel:
+
+  ```bash
+  sdl-freerdp3 /dynamic-resolution /log-level:INFO /v:192.168.42.42 /vc:soxy
+  ```
+
+or with Dynamic Virtual Channel:
+
+  ```bash
+  sdl-freerdp3 /dynamic-resolution /log-level:INFO /v:192.168.42.42 /dvc:soxy
   ```
 
 For Remmina, edit your RDP connection, go to the "Advanced" tab and set the
-"Static virtual channel" parameter to `soxy`.
+"Static virtual channel" (x)or "Dynamic virtual channel" parameter to `soxy`.
 
 #### For Citrix Workspace App
 
@@ -285,22 +364,43 @@ First copy `libsoxy.so` to `/opt/Citrix/ICAClient/`, then modify
 - add a `[soxy]` section containing the following line:
   - `DriverName = libsoxy.so`
 
+Be careful, **only Static Virtual Channels** are supported in the Citrix
+Linux client.
+
 ##### On Windows
 
-First copy the **32 bits version** of `soxy.dll` from `i686-pc-windows-gnu` to
-`C:\Program Files (x86)\Citrix\ICA Client`, then register it for automatic
-loading by Citrix Workspace App; you need to run the command with administrator
-privileges:
+First **you must copy** the **32 bits version** of `soxy.dll` from
+`i686-pc-windows-gnu` to `C:\Program Files (x86)\Citrix\ICA Client`,
+then register it with the **32 bits version** of `soxyreg` for
+automatic loading by Citrix Workspace App; you need to run the command
+with administrator privileges.
+
+To use a Static Virtual Channel:
 
 ```bash
-regsvr32.exe soxy.dll
+i686-pc-windows-gnu\soxyreg.exe svc register soxy.dll
 ```
 
-To uninstall:
+(x)or to use a Dynamic Virtual Channel:
 
 ```bash
-regsvr32.exe /u soxy.dll
+i686-pc-windows-gnu\soxyreg.exe dvc register soxy.dll
 ```
+
+To uninstall the Static Virtual Channel:
+
+```bash
+i686-pc-windows-gnu\soxyreg.exe svc unregister
+```
+
+and to uninstall the Dynamic Virtual Channel:
+
+```bash
+i686-pc-windows-gnu\soxyreg.exe dvc unregister
+```
+
+Be careful, **only Static Virtual Channels** are supported by the Citrix
+Linux VDA.
 
 #### Configuration file
 
@@ -311,11 +411,14 @@ found, it will be created with default values. Here is a complete
 example of configuration file:
 
 ```toml
+#Default virtual channel name.
+channel = "SOXY"
+
 #Default listen address for services. It can be overridden per service.
 #Use "::1" to listen both on IPv4 and IPv6 on localhost.
 #Use "::0" to listen both on IPv4 and IPv6 on all interfaces.
-#Default value is "::1".
-ip = "::1"
+#Default value is "127.0.0.1".
+ip = "127.0.0.1"
 
 [log]
 #Logging level: "OFF" or "ERROR" or "WARN" or "INFO" or "DEBUG" or "TRACE".
@@ -341,6 +444,11 @@ enabled = true
 port = 2021
 
 [[services]]
+name = "input"
+enabled = true
+port = 1081
+
+[[services]]
 name = "socks5"
 enabled = true
 #Override the listen address of this service only
@@ -351,7 +459,19 @@ port = 1080
 name = "stage0"
 #Disable this service
 enabled = false
-port = 1081
+port = 1082
+
+#Examples of port forwarding configuration entries
+
+[[forward]]
+ip = "127.0.0.1"
+port = 2222
+destination = "localhost:22"
+
+[[forward]]
+ip = "127.0.0.1"
+port = 8080
+destination = "localhost:80"
 ```
 
 
@@ -359,15 +479,24 @@ port = 1081
 
 #### Using `soxy.exe`
 
-Copy `release/x86_64-pc-windows-gnu/soxy.exe` to the machine you are connected
-to and execute it.
+Copy `release/x86_64-pc-windows-gnu/soxy.exe` to the Windows machine
+you are connected to and execute it. On a Linux remote machine, use
+`release/x86_64-unknown-linux-gnu/soxy`. You can override the default
+virtual channel name (*i.e.* `SOXY`) by giving it as first and single
+argument on the command line, e.g.:
 
-#### (Alternative) Using the DLL
+```bash
+soxy.exe MYCHAN
+```
 
-Copy `release/x86_64-pc-windows-gnu/soxy.dll` (or `release/i686-pc-windows-gnu/soxy.dll`
-depending on the Windows architecture) and _find your way to load the DLL_.
-For example, this can be done thanks to `rundll32.exe` present on Windows
-with the following command:
+The virtual channel name is at most 7 ASCII characters.
+
+#### (Alternative) Using the DLL/.so
+
+Copy `release/x86_64-pc-windows-gnu/soxy.dll` and _find your way to
+load the DLL_. For example, this can be done
+thanks to `rundll32.exe` present on Windows with the following
+command:
 
 ```bash
 rundll32.exe soxy.dll,Main
@@ -379,7 +508,6 @@ threads launched at loading time by the `DllMain` function present in the DLL.
 If the DLL is loaded by a real binary/application, soxy will remain active until
 the binary/application exits; you do not have to execute anything in the
 library, everything will be done automatically at loading time.
-
 
 
 ## 💻 Usage
@@ -394,8 +522,8 @@ you can start using soxy services from your client machine
 
 #### Remote Clipboard
 
-Connect to `localhost:3032` on your client machine with a telnet-like command
-such as `nc`, and use the available commands:
+Connect to `localhost:3032` on your client machine with a telnet command,
+and use the available commands:
 
 - `write xxxx` or `put xxxx`: sets the remote clipboard to the value `xxxx`;
 - `read` or `get`: retrieves the content of the remote clipboard;
@@ -403,14 +531,47 @@ such as `nc`, and use the available commands:
 
 #### Remote Console/Shell
 
-Connect to `localhost:3031` on your client machine with a telnet-like command
-such as `nc`, and use the available commands.
+Connect to `localhost:3031` on your client machine with a telnet command,
+and use the available commands.
 
 #### Remote Filesystem
 
 Connect to `localhost:2021` on your client machine with your favorite FTP client
 to browse, upload, download files and directories accessible to the backend
 user.
+
+#### Input
+
+Connect to `localhost:1081` on your client machine with a telnet
+command, and use one of the available commands below to
+send input events. This service does not require a running backend,
+only a loaded frontend.
+
+- `delay <delay>` where `<delay>` is a integer representing an amount
+  of time in milliseconds: sets the default delay between two input
+  events;
+- `pause <delay>` where `<delay>` is a integer representing an amount
+  of time in milliseconds: waits the given amount of time before
+  sending the next input event;
+- `keydown <key>` where `<key>` in a supported keyword associated to a
+  keyboard key (see `common/src/input/frontend.rs` for available
+  keywords): presses the given keyboard key until the corresponding
+  `keyup <key>` command is emitted;
+- `key <key>` where `<key>` in a supported keyword associated to a
+  keyboard key (see `common/src/input/frontend.rs` for available
+  keywords): emulates the given key stroke (i.e. pressed then released);
+- `write <input>` (resp. `writeln <input>`) where `<input>` a
+  newline-terminated string: emulates the typing of the given text
+  input on the keyboard (resp. including a carriage return at the
+  end);
+- `cat <file path>` where `<file path>` is a path to a "text" file:
+  emulates the typing of the content of the given file on the keyboard;
+- `exit` to quit the session.
+
+In practice, the `cat` command permits to type the content of the
+`tools/stage0/stage0.ps1` script on a remote machine where the soxy
+backend is not yet deployed, and then to use the Stage0 service of
+soxy to transfer the `soxy.exe` (or `soxy.dll`) backend.
 
 #### SOCKS5 Proxy
 
@@ -419,18 +580,25 @@ Connections will originate from the remote host.
 
 #### Stage0
 
-Connect to `localhost:1081` on your client machine with a telnet-like command
-such as `nc`, and use the available command:
+Execute the script `stage0.ps1` (which can be found in `tools/stage0`) on the remote machine:
+```powershell
+powershell.exe -ExecutionPolicy Bypass -file stage0.ps1
+```
 
-- `cat xxxx`, `push xxxx`, `put xxxx`, `send xxxx`, `upload xxxx`: sends the
-  content of the file at the provided path.
+Connect to `localhost:1082` on your client machine with a telnet command,
+and use the available commands:
+
+- `send <file path>`: sends the content of the file at the provided
+  path, it will be stored in a file named `favicon.iso` in the
+  directory where the previous script has been launched;
+- `exit` to quit the session.
 
 ## Troubleshooting
 
 ### Citrix
 
 If you get an error like `failed to open channel handle: virtual channel open failed (last_error = 5)`
-it means there are restrictions on citrix host virtual channels (default behavior
+it means there are restrictions on Citrix host virtual channels (default behavior
 in last Citrix version). To fix this, if you have (local) administrator privileges,
 you can disable Citrix restrictions on virtual channels (which is not recommended):
 
@@ -438,7 +606,8 @@ you can disable Citrix restrictions on virtual channels (which is not recommende
 reg add HKLM\SOFTWARE\WOW6432Node\Policies\Citrix\VCPolicies /v VirtualChannelWhiteList /t REG_MULTI_SZ /d =disabled=
 ```
 
-Or you can whitelist `SOXY` like this if you have (local) administrator privileges:
+Or you can whitelist `SOXY` (or your custom virtual channel name) like
+this if you have (local) administrator privileges:
 
 ```powershell
 reg add HKLM\SOFTWARE\WOW6432Node\Policies\Citrix\VCPolicies /v VirtualChannelWhiteList /t REG_MULTI_SZ /d SOXY,C:\Users\<USER>\<PATH_TO_SOXY_EXE>
@@ -448,11 +617,8 @@ Note that in both cases, you have to reboot the Citrix host afterward.
 
 ### XRDP
 
-If you get an error like `failed to open channel handle: virtual channel open failed`
-it  means there are restrictions on XRDP host virtual channels. To fix this,
-if you have (local) administrator privileges, you can disable XRDP restrictions
-for this very specific virtual channel. Edit `/etc/xrdp/xrdp.ini`, look for `[Channels]`
-entry and add below `SOXY=true`.
+Dynamic virtual channel with XRDP backend is experimental; please 
+use static virtual channel which is working well.
 
 The `backend` needs to be able to load `libxrdpapi.so` from the library path.
 On most Linux distributions, it is not by default. You can add it on the
@@ -461,6 +627,20 @@ command line, e.g. for `x86_64` on Debian:
 ```bash
 LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/ soxy
 ```
+
+If you get an error like `failed to open channel handle: virtual
+channel open failed` it means there are restrictions on XRDP host
+virtual channels. To fix this, if you have (local) administrator
+privileges, you can disable XRDP restrictions for this very specific
+virtual channel. Edit `/etc/xrdp/xrdp.ini`, look for `[Channels]`
+entry and add below `SOXY=true`.
+
+Before version 0.10, you may not have such error and the backend could
+seem to be working properly (channel opening is OK) but no service is
+working. In this case, please have a look at XRDP logs (`journalctl -u
+xdrp.service`) to see if there is a message like `Received a message
+for the disabled channel`. If this is the case, you need to whitelist
+the `SOXY` channel as described above.
 
 ## 🚧 Contributing
 
